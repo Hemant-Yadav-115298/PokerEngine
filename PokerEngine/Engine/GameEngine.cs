@@ -60,20 +60,26 @@ namespace PokerEngine.Engine
                 case ActionType.Fold:
                     player.Fold();
                     round.MarkFold(player.Id);
+                    round.MarkActed(player.Id);
                     break;
                 case ActionType.Check:
+                    round.MarkActed(player.Id);
                     break;
                 case ActionType.Call:
                     HandleCall(state, player);
+                    round.MarkActed(player.Id);
                     break;
                 case ActionType.Bet:
                     HandleBet(state, player, action.Amount);
+                    round.MarkActed(player.Id);
                     break;
                 case ActionType.Raise:
                     HandleRaise(state, player, action.Amount);
+                    round.MarkActed(player.Id);
                     break;
                 case ActionType.AllIn:
                     HandleAllIn(state, player, action.Amount);
+                    round.MarkActed(player.Id);
                     break;
             }
 
@@ -88,10 +94,26 @@ namespace PokerEngine.Engine
                 return validation;
             }
 
+            // Check if all remaining players are all-in (no more betting possible)
+            var canAct = state.Players.Any(p => !p.IsFolded && !p.IsAllIn && p.Stack > 0);
+            if (!canAct)
+            {
+                // Run out to showdown - deal remaining community cards
+                RunOutToShowdown(state);
+                return validation;
+            }
+
             if (_turnManager.ShouldCloseRound(state))
             {
                 _roundManager.AdvancePhase(state);
                 state.CurrentSeatToAct = FirstToActAfterBlinds(state);
+                
+                // After phase advance, check again if anyone can act
+                canAct = state.Players.Any(p => !p.IsFolded && !p.IsAllIn && p.Stack > 0);
+                if (!canAct)
+                {
+                    RunOutToShowdown(state);
+                }
             }
             else
             {
@@ -99,6 +121,16 @@ namespace PokerEngine.Engine
             }
 
             return validation;
+        }
+
+        private void RunOutToShowdown(GameState state)
+        {
+            // Deal remaining community cards without betting
+            while (state.Phase < GamePhase.Showdown)
+            {
+                _roundManager.AdvancePhase(state);
+            }
+            state.Phase = GamePhase.Showdown;
         }
 
         public Dictionary<Guid, decimal> Showdown(GameState state, IReadOnlyDictionary<Guid, int> handRanks)
@@ -205,7 +237,8 @@ namespace PokerEngine.Engine
             {
                 var seat = seats[(startIndex + i) % seats.Count];
                 var player = state.GetPlayerBySeat(seat);
-                if (player.Stack > 0)
+                // Skip folded and all-in players
+                if (!player.IsFolded && !player.IsAllIn && player.Stack > 0)
                 {
                     return seat;
                 }

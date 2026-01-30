@@ -16,6 +16,7 @@ namespace PokerEngine.State
     {
         private readonly Dictionary<Guid, decimal> _contributions = new();
         private readonly HashSet<Guid> _contestingPlayers = new();
+        private readonly HashSet<Guid> _playersActedThisRound = new();
 
         public decimal CurrentBet { get; private set; }
 
@@ -27,12 +28,15 @@ namespace PokerEngine.State
 
         public IReadOnlyCollection<Guid> ContestingPlayers => _contestingPlayers;
 
+        public IReadOnlyCollection<Guid> PlayersActedThisRound => _playersActedThisRound;
+
         public bool CanClose { get; private set; }
 
         public void ResetForNewRound(IEnumerable<Guid> activePlayerIds)
         {
             _contributions.Clear();
             _contestingPlayers.Clear();
+            _playersActedThisRound.Clear();
             foreach (var id in activePlayerIds)
             {
                 _contestingPlayers.Add(id);
@@ -59,7 +63,13 @@ namespace PokerEngine.State
             LastAggressorSeat = aggressorSeat;
             LastRaiseAmount = raiseAmount;
             CanClose = false;
+            // When someone bets/raises, reset acted tracking - everyone needs to respond
+            _playersActedThisRound.Clear();
         }
+
+        public void MarkActed(Guid playerId) => _playersActedThisRound.Add(playerId);
+
+        public bool HasActed(Guid playerId) => _playersActedThisRound.Contains(playerId);
 
         public void MarkFold(Guid playerId) => _contestingPlayers.Remove(playerId);
 

@@ -42,28 +42,36 @@ namespace PokerEngine.Engine
         public bool ShouldCloseRound(GameState state)
         {
             var round = state.RoundState;
-            var contesting = round.ContestingPlayers.ToList();
-            if (contesting.Count == 0)
+            
+            // Get active players who can still act (not folded, not all-in, have chips)
+            var activePlayers = state.Players.Where(p => !p.IsFolded && !p.IsAllIn && p.Stack > 0).ToList();
+            
+            // If no active players remain (all folded or all-in), round closes
+            if (activePlayers.Count == 0)
             {
                 return true;
             }
-
-            foreach (var playerId in contesting)
+            
+            // Check if all active players have:
+            // 1. Acted this round (check/fold/call/bet/raise)
+            // 2. Matched the current bet (or are all-in)
+            foreach (var player in activePlayers)
             {
-                var player = state.GetPlayerById(playerId);
-                if (player.IsFolded)
+                // If player hasn't acted yet this round, can't close
+                if (!round.HasActed(player.Id))
                 {
-                    continue;
+                    return false;
                 }
-
-                var contribution = round.GetContribution(playerId);
-                var needsToAct = !player.IsAllIn && contribution < round.CurrentBet;
-                if (needsToAct)
+                
+                // If player hasn't matched current bet, can't close
+                var contribution = round.GetContribution(player.Id);
+                if (contribution < round.CurrentBet)
                 {
                     return false;
                 }
             }
-
+            
+            // All active players have acted and matched the bet - round can close
             return true;
         }
     }

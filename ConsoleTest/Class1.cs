@@ -66,10 +66,25 @@ namespace ConsoleTest
 
         private static void RunGameLoop()
         {
-            while (_state != null && !_state.HandComplete)
+            while (_state != null && !_state.HandComplete && _state.Phase != GamePhase.Showdown)
             {
+                // Check if anyone can still act (not folded, not all-in, has chips)
+                var canAct = _state.Players.Any(p => !p.IsFolded && !p.IsAllIn && p.Stack > 0);
+                if (!canAct)
+                {
+                    // All-in runout - no more actions needed
+                    break;
+                }
+
                 PrintGameState();
                 var currentPlayer = _state.GetPlayerBySeat(_state.CurrentSeatToAct);
+
+                // Skip folded or all-in players (shouldn't happen but safety check)
+                if (currentPlayer.IsFolded || currentPlayer.IsAllIn)
+                {
+                    Console.WriteLine($"\n[{currentPlayer.Name} cannot act - skipping]");
+                    continue;
+                }
 
                 Console.WriteLine($"\n>>> {currentPlayer.Name}'s turn (Stack: {currentPlayer.Stack:C0})");
                 PrintHoleCards(currentPlayer);
