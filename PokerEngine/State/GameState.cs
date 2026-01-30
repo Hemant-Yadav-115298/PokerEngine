@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
+using System.Linq;
+using PokerEngine.Core;
+using PokerEngine.Engine;
 
 // File: GameState.cs
 // Purpose: Single source of truth describing the current poker session and active hand state.
@@ -15,5 +17,70 @@ namespace PokerEngine.State
     /// </summary>
     internal class GameState
     {
+        private readonly List<Player> _players;
+
+        public GameState(IEnumerable<Player> players, Deck deck, decimal smallBlind, decimal bigBlind, int dealerSeat)
+        {
+            if (players == null) throw new ArgumentNullException(nameof(players));
+            _players = players.ToList();
+            if (_players.Count < 2) throw new ArgumentException("At least two players required.", nameof(players));
+            if (_players.Any(p => p == null)) throw new ArgumentException("Players cannot contain null.", nameof(players));
+            if (_players.Select(p => p.SeatIndex).Distinct().Count() != _players.Count)
+            {
+                throw new ArgumentException("Seat indices must be unique across players.", nameof(players));
+            }
+            if (_players.Select(p => p.Id).Distinct().Count() != _players.Count)
+            {
+                throw new ArgumentException("Player IDs must be unique across players.", nameof(players));
+            }
+
+            _players = _players.OrderBy(p => p.SeatIndex).ToList();
+            Deck = deck ?? throw new ArgumentNullException(nameof(deck));
+            if (smallBlind <= 0) throw new ArgumentOutOfRangeException(nameof(smallBlind));
+            if (bigBlind <= 0 || bigBlind < smallBlind) throw new ArgumentOutOfRangeException(nameof(bigBlind));
+            SmallBlind = smallBlind;
+            BigBlind = bigBlind;
+            DealerSeat = dealerSeat;
+            CurrentSeatToAct = dealerSeat;
+            Phase = GamePhase.NotStarted;
+            CommunityCards = new List<Card>(5);
+            RoundState = new RoundState();
+            Pots = new List<Pot>();
+            TotalContributions = new Dictionary<Guid, decimal>();
+            foreach (var player in _players)
+            {
+                TotalContributions[player.Id] = 0m;
+            }
+        }
+
+        public IReadOnlyList<Player> Players => _players;
+
+        public Deck Deck { get; }
+
+        public List<Card> CommunityCards { get; }
+
+        public GamePhase Phase { get; set; }
+
+        public int DealerSeat { get; set; }
+
+        public int CurrentSeatToAct { get; set; }
+
+        public decimal SmallBlind { get; }
+
+        public decimal BigBlind { get; }
+
+        public RoundState RoundState { get; }
+
+        public Dictionary<Guid, decimal> TotalContributions { get; }
+
+        public List<Pot> Pots { get; }
+
+        public bool HandComplete { get; set; }
+
+        public Player GetPlayerById(Guid id) => _players.First(p => p.Id == id);
+
+        public Player GetPlayerBySeat(int seat) => _players.First(p => p.SeatIndex == seat);
+
+        public IEnumerable<Player> ActivePlayers() => _players.Where(p => !p.IsFolded);
     }
 }

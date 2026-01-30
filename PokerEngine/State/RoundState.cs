@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
 
 // File: RoundState.cs
 // Purpose: Captures transient data for the current betting round within a hand.
@@ -15,5 +14,60 @@ namespace PokerEngine.State
     /// </summary>
     internal class RoundState
     {
+        private readonly Dictionary<Guid, decimal> _contributions = new();
+        private readonly HashSet<Guid> _contestingPlayers = new();
+
+        public decimal CurrentBet { get; private set; }
+
+        public int? LastAggressorSeat { get; private set; }
+
+        public decimal LastRaiseAmount { get; private set; }
+
+        public IReadOnlyDictionary<Guid, decimal> Contributions => _contributions;
+
+        public IReadOnlyCollection<Guid> ContestingPlayers => _contestingPlayers;
+
+        public bool CanClose { get; private set; }
+
+        public void ResetForNewRound(IEnumerable<Guid> activePlayerIds)
+        {
+            _contributions.Clear();
+            _contestingPlayers.Clear();
+            foreach (var id in activePlayerIds)
+            {
+                _contestingPlayers.Add(id);
+                _contributions[id] = 0m;
+            }
+            CurrentBet = 0m;
+            LastAggressorSeat = null;
+            LastRaiseAmount = 0m;
+            CanClose = false;
+        }
+
+        public void RecordContribution(Guid playerId, decimal amount)
+        {
+            if (!_contributions.ContainsKey(playerId))
+            {
+                _contributions[playerId] = 0m;
+            }
+            _contributions[playerId] += amount;
+        }
+
+        public void SetCurrentBet(decimal betSize, int aggressorSeat, decimal raiseAmount)
+        {
+            CurrentBet = betSize;
+            LastAggressorSeat = aggressorSeat;
+            LastRaiseAmount = raiseAmount;
+            CanClose = false;
+        }
+
+        public void MarkFold(Guid playerId) => _contestingPlayers.Remove(playerId);
+
+        public void MarkReadyToClose() => CanClose = true;
+
+        public decimal GetContribution(Guid playerId)
+        {
+            return _contributions.TryGetValue(playerId, out var amount) ? amount : 0m;
+        }
     }
 }

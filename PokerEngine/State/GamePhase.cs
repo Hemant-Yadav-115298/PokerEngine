@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 
 // File: GamePhase.cs
 // Purpose: Defines the discrete phases of a Texas Hold'em hand.
@@ -13,7 +11,14 @@ namespace PokerEngine.State
     /// <summary>
     /// Enumerated hand phases (e.g., pre-flop through showdown) used to gate logic across the engine.
     /// </summary>
-    internal class GamePhase
+    internal enum GamePhase
     {
+        NotStarted = 0,
+        PreFlop = 1,
+        Flop = 2,
+        Turn = 3,
+        River = 4,
+        Showdown = 5,
+        Complete = 6
     }
 }

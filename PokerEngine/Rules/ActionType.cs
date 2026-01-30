@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 
 // File: ActionType.cs
 // Purpose: Enumerates the possible player action categories in Texas Hold'em.
@@ -13,7 +11,14 @@ namespace PokerEngine.Rules
     /// <summary>
     /// Canonical action type definitions (e.g., fold, check, call, bet, raise) for the rules layer.
     /// </summary>
-    internal class ActionType
+    internal enum ActionType
     {
+        None = 0,
+        Fold = 1,
+        Check = 2,
+        Call = 3,
+        Bet = 4,
+        Raise = 5,
+        AllIn = 6
     }
 }

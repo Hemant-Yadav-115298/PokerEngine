@@ -1,6 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.Security.Cryptography;
 
 // File: SecureRandom.cs
 // Purpose: Provides cryptographically strong random numbers for shuffling and seeding.
@@ -13,7 +12,34 @@ namespace PokerEngine.RNG
     /// <summary>
     /// Cryptographically secure RNG wrapper intended for deck seeding and any stochastic operations.
     /// </summary>
-    internal class SecureRandom
+    internal sealed class SecureRandom : IDisposable
     {
+        private readonly RandomNumberGenerator _rng = RandomNumberGenerator.Create();
+        private bool _disposed;
+
+        public int NextInt(int maxExclusive)
+        {
+            if (maxExclusive <= 0) throw new ArgumentOutOfRangeException(nameof(maxExclusive));
+            Span<byte> buffer = stackalloc byte[4];
+            _rng.GetBytes(buffer);
+            var value = BitConverter.ToUInt32(buffer);
+            return (int)(value % (uint)maxExclusive);
+        }
+
+        public int NextInt(int minInclusive, int maxExclusive)
+        {
+            if (minInclusive >= maxExclusive) throw new ArgumentOutOfRangeException(nameof(maxExclusive));
+            var range = maxExclusive - minInclusive;
+            return minInclusive + NextInt(range);
+        }
+
+        public void FillBytes(Span<byte> destination) => _rng.GetBytes(destination);
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _rng.Dispose();
+            _disposed = true;
+        }
     }
 }
