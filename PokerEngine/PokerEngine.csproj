@@ -10,4 +10,8 @@
     <InternalsVisibleTo Include="ConsoleTest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="HoldemPoker.Evaluator" Version="1.0.1" />
+  </ItemGroup>
+
 </Project>

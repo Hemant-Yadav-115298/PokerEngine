@@ -238,38 +238,45 @@ namespace ConsoleTest
                 Console.WriteLine($"   Final stack: {winner.Stack:C0}");
                 Console.ResetColor();
             }
-            else if (_state.Phase == GamePhase.Showdown || _state.Phase == GamePhase.Complete)
+            else if (_state.Phase == GamePhase.Showdown || _state.Phase == GamePhase.Complete || _state.CommunityCards.Count == 5)
             {
                 Console.WriteLine("\n*** SHOWDOWN ***");
-                Console.WriteLine("Reveal hole cards:");
+                Console.WriteLine($"\nBoard: {string.Join(" | ", _state.CommunityCards.Select(FormatCard))}");
+                Console.WriteLine("\nHands:");
+
+                // Use HandEvaluatorWrapper for automatic evaluation
+                var evaluator = new HandEvaluatorWrapper();
+                var handResults = new List<(Player Player, int Rank, string HandName)>();
+
                 foreach (var p in remaining)
                 {
                     if (p.HoleCards.Count == 2)
                     {
-                        Console.WriteLine($"  {p.Name}: {FormatCard(p.HoleCards[0])} | {FormatCard(p.HoleCards[1])}");
+                        var rank = evaluator.EvaluateHand(p.HoleCards, _state.CommunityCards);
+                        var handName = evaluator.GetHandName(p.HoleCards, _state.CommunityCards);
+                        handResults.Add((p, rank, handName));
+
+                        Console.WriteLine($"  {p.Name}: {FormatCard(p.HoleCards[0])} | {FormatCard(p.HoleCards[1])} → {handName}");
                     }
                 }
 
-                // Simulate hand ranks (in real app, use HandEvaluatorWrapper)
-                Console.WriteLine("\nEnter winner seat number (for demo - real app would evaluate hands):");
-                if (int.TryParse(Console.ReadLine(), out var winnerSeat))
+                // Create hand ranks dictionary (lower rank = better hand)
+                var handRanks = handResults.ToDictionary(r => r.Player.Id, r => r.Rank);
+
+                var payouts = _engine.Showdown(_state, handRanks);
+
+                // Find winners (those with payouts > 0)
+                var winners = payouts.Where(p => p.Value > 0).ToList();
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("\n🏆 WINNERS:");
+                foreach (var (playerId, amount) in winners)
                 {
-                    var handRanks = remaining.ToDictionary(
-                        p => p.Id,
-                        p => p.SeatIndex == winnerSeat ? 1 : 2
-                    );
-
-                    var payouts = _engine.Showdown(_state, handRanks);
-
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("\nPayouts:");
-                    foreach (var (playerId, amount) in payouts.Where(p => p.Value > 0))
-                    {
-                        var player = _state.GetPlayerById(playerId);
-                        Console.WriteLine($"  🏆 {player.Name}: +{amount:C0}");
-                    }
-                    Console.ResetColor();
+                    var player = _state.GetPlayerById(playerId);
+                    var handInfo = handResults.First(r => r.Player.Id == playerId);
+                    Console.WriteLine($"  {player.Name} wins {amount:C0} with {handInfo.HandName}");
                 }
+                Console.ResetColor();
             }
 
             Console.WriteLine("\n═══════════════════════════════════════════════════════════");

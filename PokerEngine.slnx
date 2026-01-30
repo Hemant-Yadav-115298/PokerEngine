@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="ConsoleTest/ConsoleTest.csproj" />
   <Project Path="PokerEngine/PokerEngine.csproj" />
 </Solution>
