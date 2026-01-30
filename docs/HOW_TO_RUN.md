@@ -4,6 +4,7 @@
 
 - **.NET 10.0 SDK** (or later) installed
 - Verify with: `dotnet --version`
+- **Internet connection** (required on first build to download NuGet packages)
 
 ## Quick Start
 
@@ -13,13 +14,14 @@
 cd C:\Users\MGAsia\source\repos\PokerEngine
 ```
 
-### 2. Build the Solution
+### 2. Restore Dependencies & Build
 
 ```bash
+dotnet restore
 dotnet build PokerEngine.slnx
 ```
 
-Or build the console test directly:
+Or build the console test directly (restore happens automatically):
 
 ```bash
 dotnet build ConsoleTest/ConsoleTest.csproj
