@@ -198,8 +198,19 @@ namespace PokerEngine.Engine
 
         private void PostBlinds(GameState state)
         {
-            var smallBlindSeat = NextOccupiedSeat(state, state.DealerSeat);
-            var bigBlindSeat = NextOccupiedSeat(state, smallBlindSeat);
+            int smallBlindSeat, bigBlindSeat;
+            
+            // Heads-up special case: dealer is small blind
+            if (state.Players.Count(p => p.Stack > 0) == 2)
+            {
+                smallBlindSeat = state.DealerSeat;
+                bigBlindSeat = NextOccupiedSeat(state, state.DealerSeat);
+            }
+            else
+            {
+                smallBlindSeat = NextOccupiedSeat(state, state.DealerSeat);
+                bigBlindSeat = NextOccupiedSeat(state, smallBlindSeat);
+            }
 
             var small = state.GetPlayerBySeat(smallBlindSeat);
             var big = state.GetPlayerBySeat(bigBlindSeat);
@@ -211,6 +222,9 @@ namespace PokerEngine.Engine
             state.RoundState.RecordContribution(small.Id, smallContribution);
             state.RoundState.RecordContribution(big.Id, bigContribution);
             state.RoundState.SetCurrentBet(bigContribution, big.SeatIndex, state.BigBlind);
+            
+            // Store BB seat for preflop first-to-act calculation
+            state.BigBlindSeat = bigBlindSeat;
 
             _potManager.ApplyContribution(state, small.Id, smallContribution);
             _potManager.ApplyContribution(state, big.Id, bigContribution);
@@ -218,11 +232,21 @@ namespace PokerEngine.Engine
 
         private int FirstToActAfterBlinds(GameState state)
         {
-            var referenceSeat = state.Phase == GamePhase.PreFlop
-                ? state.RoundState.LastAggressorSeat ?? state.DealerSeat
-                : state.DealerSeat;
-
-            return NextOccupiedSeat(state, referenceSeat);
+            if (state.Phase == GamePhase.PreFlop)
+            {
+                // PreFlop: First to act is UTG (seat after big blind)
+                // For heads-up: dealer (SB) acts first preflop
+                if (state.Players.Count(p => !p.IsFolded && p.Stack >= 0) == 2)
+                {
+                    return state.DealerSeat;
+                }
+                return NextOccupiedSeat(state, state.BigBlindSeat);
+            }
+            else
+            {
+                // Post-flop: First active player after dealer
+                return NextOccupiedSeat(state, state.DealerSeat);
+            }
         }
 
         private static int NextOccupiedSeat(GameState state, int fromSeat)

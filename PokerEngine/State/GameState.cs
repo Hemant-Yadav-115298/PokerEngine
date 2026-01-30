@@ -62,6 +62,8 @@ namespace PokerEngine.State
         public GamePhase Phase { get; set; }
 
         public int DealerSeat { get; set; }
+        
+        public int BigBlindSeat { get; set; }
 
         public int CurrentSeatToAct { get; set; }
 

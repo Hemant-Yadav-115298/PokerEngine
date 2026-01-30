@@ -27,30 +27,64 @@ namespace PokerEngine.Engine
 
         public List<Pot> BuildPots(GameState state, IReadOnlyCollection<Guid> eligiblePlayers)
         {
+            // Get all contributions sorted by amount
             var contributions = state.TotalContributions
                 .Where(kv => kv.Value > 0)
                 .OrderBy(kv => kv.Value)
                 .ToList();
 
-            var remainingContributors = new HashSet<Guid>(state.TotalContributions.Where(kv => kv.Value > 0).Select(kv => kv.Key));
-            var remainingEligible = new HashSet<Guid>(eligiblePlayers);
+            if (contributions.Count == 0)
+            {
+                state.Pots.Clear();
+                return new List<Pot>();
+            }
 
             var pots = new List<Pot>();
-            decimal previous = 0m;
+            decimal previousLevel = 0m;
 
+            // Build side pots at each contribution level
             foreach (var kvp in contributions)
             {
-                var slice = kvp.Value - previous;
-                if (slice > 0 && remainingContributors.Count > 0)
+                var currentLevel = kvp.Value;
+                var slice = currentLevel - previousLevel;
+                
+                if (slice > 0)
                 {
-                    var amount = slice * remainingContributors.Count;
-                    var eligibleForPot = remainingContributors.Where(remainingEligible.Contains).ToArray();
-                    pots.Add(new Pot(amount, eligibleForPot));
+                    // Count all contributors at or above this level
+                    var contributorsAtThisLevel = contributions
+                        .Where(c => c.Value >= currentLevel)
+                        .Select(c => c.Key)
+                        .ToList();
+                    
+                    // Also include contributors who contributed less but already processed
+                    var allContributors = contributions
+                        .Where(c => c.Value >= previousLevel && c.Value > 0)
+                        .Select(c => c.Key)
+                        .ToList();
+                    
+                    var amount = slice * allContributors.Count;
+                    
+                    // Eligible players for this pot: those who contributed AND are not folded
+                    var eligibleForPot = allContributors
+                        .Where(id => eligiblePlayers.Contains(id))
+                        .ToArray();
+                    
+                    if (eligibleForPot.Length > 0)
+                    {
+                        pots.Add(new Pot(amount, eligibleForPot));
+                    }
+                    else if (amount > 0)
+                    {
+                        // Dead money - no eligible players, add to previous pot or create orphan pot
+                        if (pots.Count > 0)
+                        {
+                            var lastPot = pots[^1];
+                            pots[^1] = new Pot(lastPot.Amount + amount, lastPot.EligiblePlayers);
+                        }
+                    }
                 }
-
-                remainingContributors.Remove(kvp.Key);
-                remainingEligible.Remove(kvp.Key);
-                previous = kvp.Value;
+                
+                previousLevel = currentLevel;
             }
 
             state.Pots.Clear();
