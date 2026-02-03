@@ -14,6 +14,7 @@ public class UIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI phaseText;
     [SerializeField] private Button startHandButton;
     [SerializeField] private Button foldButton;
+    [SerializeField] private Button checkButton;
     [SerializeField] private Button callButton;
     [SerializeField] private Button raiseButton;
 
@@ -28,13 +29,23 @@ public class UIManager : MonoBehaviour
         
         // Setup button listeners
         if (startHandButton != null)
-            startHandButton.onClick.AddListener(OnStartHandClicked);
+            startHandButton.onClick.AddListener(() => gameManager?.StartNewHand());
         if (foldButton != null)
-            foldButton.onClick.AddListener(OnFoldClicked);
+            foldButton.onClick.AddListener(() => gameManager?.OnFoldClicked());
+        if (checkButton != null)
+            checkButton.onClick.AddListener(() => gameManager?.OnCheckClicked());
         if (callButton != null)
-            callButton.onClick.AddListener(OnCallClicked);
+            callButton.onClick.AddListener(() => gameManager?.OnCallClicked());
         if (raiseButton != null)
-            raiseButton.onClick.AddListener(OnRaiseClicked);
+            raiseButton.onClick.AddListener(() => gameManager?.OnRaiseClicked());
+    }
+
+    public void EnablePlayerActions(bool enable)
+    {
+        if (foldButton != null) foldButton.interactable = enable;
+        if (checkButton != null) checkButton.interactable = enable;
+        if (callButton != null) callButton.interactable = enable;
+        if (raiseButton != null) raiseButton.interactable = enable;
     }
 
     public void UpdateGameState(GameState state)
@@ -75,34 +86,12 @@ public class UIManager : MonoBehaviour
     private void UpdateButtonStates(GameState state)
     {
         bool isActive = !state.HandComplete && state.Phase != GamePhase.NotStarted;
+        bool isHumanTurn = gameManager != null && gameManager.IsHumanTurn();
         
-        if (foldButton != null) foldButton.interactable = isActive;
-        if (callButton != null) callButton.interactable = isActive;
-        if (raiseButton != null) raiseButton.interactable = isActive;
+        if (foldButton != null) foldButton.interactable = isActive && isHumanTurn;
+        if (checkButton != null) checkButton.interactable = isActive && isHumanTurn;
+        if (callButton != null) callButton.interactable = isActive && isHumanTurn;
+        if (raiseButton != null) raiseButton.interactable = isActive && isHumanTurn;
         if (startHandButton != null) startHandButton.interactable = !isActive;
-    }
-
-    // Button callbacks
-    private void OnStartHandClicked()
-    {
-        gameManager?.StartNewHand();
-    }
-
-    private void OnFoldClicked()
-    {
-        // TODO: Create and send fold action
-        Debug.Log("Fold clicked");
-    }
-
-    private void OnCallClicked()
-    {
-        // TODO: Create and send call action
-        Debug.Log("Call clicked");
-    }
-
-    private void OnRaiseClicked()
-    {
-        // TODO: Create and send raise action
-        Debug.Log("Raise clicked");
     }
 }

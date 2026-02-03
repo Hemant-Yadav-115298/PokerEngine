@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -20,6 +21,7 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
     [SerializeField] private float startingStack = 1000f;
     [SerializeField] private float smallBlind = 5f;
     [SerializeField] private float bigBlind = 10f;
+    [SerializeField] private float aiThinkTime = 1f;
 
     [Header("References")]
     [SerializeField] private UIManager uiManager;
@@ -28,6 +30,10 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
     private GameState gameState;
     private SecureRandom secureRandom;
     private ShuffleService shuffleService;
+    private bool isProcessingTurn = false;
+
+    // Human player is always seat 0
+    private const int HUMAN_PLAYER_SEAT = 0;
 
     private void Start()
     {
@@ -45,9 +51,10 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
         var players = new Player[numberOfPlayers];
         for (int i = 0; i < numberOfPlayers; i++)
         {
+            string playerName = i == HUMAN_PLAYER_SEAT ? "You" : $"AI Player {i}";
             players[i] = new Player(
                 Guid.NewGuid(),
-                $"Player {i + 1}",
+                playerName,
                 seatIndex: i,
                 stack: (decimal)startingStack
             );
@@ -64,6 +71,11 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
         );
 
         Debug.Log("Poker game initialized with " + numberOfPlayers + " players");
+        
+        if (uiManager != null)
+        {
+            uiManager.UpdateGameState(gameState);
+        }
     }
 
     public void StartNewHand()
@@ -82,6 +94,84 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
         {
             uiManager.UpdateGameState(gameState);
         }
+
+        // Start AI turn processing
+        StartCoroutine(ProcessTurns());
+    }
+
+    private IEnumerator ProcessTurns()
+    {
+        isProcessingTurn = true;
+
+        while (!gameState.HandComplete && gameState.Phase != GamePhase.NotStarted && gameState.Phase != GamePhase.Showdown)
+        {
+            var currentPlayer = gameState.GetPlayerBySeat(gameState.CurrentSeatToAct);
+
+            if (currentPlayer.IsFolded || currentPlayer.IsAllIn)
+            {
+                // Skip folded or all-in players
+                yield return new WaitForSeconds(0.1f);
+                continue;
+            }
+
+            // Check if it's human player's turn
+            if (gameState.CurrentSeatToAct == HUMAN_PLAYER_SEAT)
+            {
+                Debug.Log("Your turn!");
+                uiManager?.EnablePlayerActions(true);
+                
+                // Wait for human action
+                yield return new WaitUntil(() => !IsHumanPlayerTurn());
+            }
+            else
+            {
+                // AI player turn
+                Debug.Log($"{currentPlayer.Name}'s turn");
+                uiManager?.EnablePlayerActions(false);
+                
+                yield return new WaitForSeconds(aiThinkTime);
+                
+                var aiAction = GetAIAction(currentPlayer);
+                ProcessPlayerAction(aiAction);
+            }
+
+            yield return new WaitForSeconds(0.2f);
+        }
+
+        // Hand complete - check for showdown
+        if (gameState.Phase == GamePhase.Showdown)
+        {
+            Debug.Log("Showdown!");
+            yield return new WaitForSeconds(1f);
+            PerformShowdown();
+        }
+        else if (gameState.HandComplete)
+        {
+            Debug.Log("Hand complete - winner by fold");
+            yield return new WaitForSeconds(1f);
+            
+            // Find winner
+            var winner = gameState.Players.FirstOrDefault(p => !p.IsFolded);
+            if (winner != null)
+            {
+                Debug.Log($"{winner.Name} wins by fold!");
+            }
+        }
+
+        isProcessingTurn = false;
+        
+        // Update UI one final time
+        if (uiManager != null)
+        {
+            uiManager.UpdateGameState(gameState);
+        }
+    }
+
+    private bool IsHumanPlayerTurn()
+    {
+        return !gameState.HandComplete && 
+               gameState.CurrentSeatToAct == HUMAN_PLAYER_SEAT &&
+               !gameState.GetPlayerBySeat(HUMAN_PLAYER_SEAT).IsFolded;
     }
 
     public void ProcessPlayerAction(PlayerAction action)
@@ -116,35 +206,95 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
         }
     }
 
+    private PlayerAction GetAIAction(Player player)
+    {
+        // Simple AI logic
+        var round = gameState.RoundState;
+        var contribution = round.GetContribution(player.Id);
+        var toCall = round.CurrentBet - contribution;
+
+        // Random decision making
+        var random = UnityEngine.Random.value;
+
+        // If no bet to call, check or bet small
+        if (toCall == 0)
+        {
+            if (random > 0.7f && player.Stack > (decimal)bigBlind * 2)
+            {
+                // Bet
+                var betAmount = round.CurrentBet + (decimal)bigBlind;
+                return PlayerAction.Bet(player.Id, betAmount);
+            }
+            else
+            {
+                // Check
+                return PlayerAction.Check(player.Id);
+            }
+        }
+        else
+        {
+            // There's a bet to call
+            if (random > 0.6f && player.Stack >= toCall)
+            {
+                // Call
+                return PlayerAction.Call(player.Id);
+            }
+            else if (random > 0.8f && player.Stack > toCall + (decimal)bigBlind)
+            {
+                // Raise
+                var raiseAmount = round.CurrentBet + (decimal)bigBlind;
+                return PlayerAction.Raise(player.Id, raiseAmount);
+            }
+            else
+            {
+                // Fold
+                return PlayerAction.Fold(player.Id);
+            }
+        }
+    }
+
     public void PerformShowdown()
     {
-        if (gameState == null || gameState.Phase != GamePhase.Showdown)
+        if (gameState == null)
         {
-            Debug.LogWarning("Cannot perform showdown - not in showdown phase");
+            Debug.LogWarning("Cannot perform showdown - game state is null");
             return;
         }
+
+        Debug.Log("=== SHOWDOWN ===");
 
         // Evaluate hands
         var evaluator = new HandEvaluatorWrapper();
         var activePlayers = gameState.Players.Where(p => !p.IsFolded).ToList();
 
+        if (activePlayers.Count == 0)
+        {
+            Debug.LogWarning("No active players for showdown");
+            return;
+        }
+
         var handRanks = new Dictionary<Guid, int>();
+        
+        Debug.Log($"Community Cards: {string.Join(", ", gameState.CommunityCards)}");
+        
         foreach (var player in activePlayers)
         {
             var rank = evaluator.EvaluateHand(player.HoleCards, gameState.CommunityCards);
             handRanks[player.Id] = rank;
             
             var handName = evaluator.GetHandName(player.HoleCards, gameState.CommunityCards);
-            Debug.Log($"{player.Name} has {handName}");
+            var cards = string.Join(", ", player.HoleCards);
+            Debug.Log($"{player.Name}: {cards} - {handName} (rank: {rank})");
         }
 
         // Distribute winnings
         var payouts = gameEngine.Showdown(gameState, handRanks);
 
-        foreach (var payout in payouts)
+        Debug.Log("=== WINNERS ===");
+        foreach (var payout in payouts.Where(p => p.Value > 0))
         {
             var player = gameState.Players.First(p => p.Id == payout.Key);
-            Debug.Log($"{player.Name} wins {payout.Value}");
+            Debug.Log($"💰 {player.Name} wins ${payout.Value}! New stack: ${player.Stack}");
         }
 
         // Update UI
@@ -152,6 +302,47 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
         {
             uiManager.UpdateGameState(gameState);
         }
+    }
+
+    // Public methods for UI buttons
+    public void OnFoldClicked()
+    {
+        if (!IsHumanPlayerTurn()) return;
+        
+        var player = gameState.GetPlayerBySeat(HUMAN_PLAYER_SEAT);
+        var action = PlayerAction.Fold(player.Id);
+        ProcessPlayerAction(action);
+    }
+
+    public void OnCheckClicked()
+    {
+        if (!IsHumanPlayerTurn()) return;
+        
+        var player = gameState.GetPlayerBySeat(HUMAN_PLAYER_SEAT);
+        var action = PlayerAction.Check(player.Id);
+        ProcessPlayerAction(action);
+    }
+
+    public void OnCallClicked()
+    {
+        if (!IsHumanPlayerTurn()) return;
+        
+        var player = gameState.GetPlayerBySeat(HUMAN_PLAYER_SEAT);
+        var action = PlayerAction.Call(player.Id);
+        ProcessPlayerAction(action);
+    }
+
+    public void OnRaiseClicked()
+    {
+        if (!IsHumanPlayerTurn()) return;
+        
+        var player = gameState.GetPlayerBySeat(HUMAN_PLAYER_SEAT);
+        var round = gameState.RoundState;
+        
+        // Simple raise: current bet + big blind
+        var raiseAmount = round.CurrentBet + (decimal)bigBlind;
+        var action = PlayerAction.Raise(player.Id, raiseAmount);
+        ProcessPlayerAction(action);
     }
 
     // IGameObserver implementation
@@ -163,4 +354,5 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
     // Public getters for UI
     public GameState GetGameState() => gameState;
     public bool IsHandActive() => gameState != null && !gameState.HandComplete;
+    public bool IsHumanTurn() => IsHumanPlayerTurn();
 }
