@@ -13,8 +13,10 @@ public class PlayerUIPanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI statusText;
     [SerializeField] private Image highlightImage;
     [SerializeField] private CardVisual[] cardVisuals = new CardVisual[2];
+    [SerializeField] private BetDisplay betDisplay;
+    [SerializeField] private DealerButtonDisplay dealerButton;
 
-    public void UpdatePlayer(Player player, bool isActive, bool showCards = false)
+    public void UpdatePlayer(Player player, bool isActive, bool showCards = false, decimal currentBet = 0, bool isDealer = false)
     {
         if (player == null) return;
 
@@ -39,7 +41,23 @@ public class PlayerUIPanel : MonoBehaviour
 
         // Highlight active player
         if (highlightImage != null)
+        {
             highlightImage.enabled = isActive;
+            if (isActive)
+                highlightImage.color = new Color(1f, 0.8f, 0f, 0.3f); // Yellow highlight
+        }
+
+        // Update bet display
+        if (betDisplay != null)
+        {
+            betDisplay.SetBet(currentBet);
+        }
+
+        // Update dealer button
+        if (dealerButton != null)
+        {
+            dealerButton.SetActive(isDealer);
+        }
 
         // Update cards
         UpdateCardDisplay(player, showCards);
@@ -53,7 +71,7 @@ public class PlayerUIPanel : MonoBehaviour
         {
             if (cardVisuals[i] == null) continue;
 
-            if (i < player.HoleCards.Count)
+            if (i < player.HoleCards.Count && !player.IsFolded)
             {
                 cardVisuals[i].SetCard(player.HoleCards[i], showCards);
             }

@@ -88,8 +88,16 @@ public class UIManager : MonoBehaviour
             var player = state.Players[i];
             bool isActive = state.CurrentSeatToAct == i;
             bool showCards = (i == 0); // Show cards only for human player (seat 0)
+            bool isDealer = (state.DealerSeat == i);
             
-            playerPanels[i].UpdatePlayer(player, isActive, showCards);
+            // Get current bet for this player
+            decimal currentBet = 0;
+            if (state.RoundState != null)
+            {
+                currentBet = state.RoundState.GetContribution(player.Id);
+            }
+            
+            playerPanels[i].UpdatePlayer(player, isActive, showCards, currentBet, isDealer);
         }
     }
 
