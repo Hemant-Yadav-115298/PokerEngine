@@ -12,7 +12,7 @@ namespace PokerEngine.State
     /// <summary>
     /// Holds per-round context to coordinate betting progress and readiness for phase advancement.
     /// </summary>
-    internal class RoundState
+    public class RoundState
     {
         private readonly Dictionary<Guid, decimal> _contributions = new();
         private readonly HashSet<Guid> _contestingPlayers = new();

@@ -1,22 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using HoldemPoker.Cards;
-using HoldemPoker.Evaluator;
 
 // File: HandEvaluatorWrapper.cs
-// Purpose: Bridges the engine to a hand-evaluation component for ranking poker hands.
-// Responsible for: Delegating to an evaluator to score hands, encapsulating external dependencies behind a stable interface.
+// Purpose: Evaluates Texas Hold'em poker hands and ranks them.
+// Responsible for: Determining hand strength from 7 cards (2 hole + 5 community), ranking hands for showdown.
 // Not responsible for: Managing pots, determining winners based on betting context, or mutating GameState.
-// Fit: Supplies PotManager and GameEngine with ranked outcomes during showdown without leaking evaluator details.
+// Fit: Supplies PotManager and GameEngine with ranked outcomes during showdown.
 
 namespace PokerEngine.Rules
 {
     /// <summary>
-    /// Adapter layer for hand evaluation using HoldemPoker.Evaluator package.
-    /// Lower rank value = better hand.
+    /// Texas Hold'em hand evaluator. Lower rank value = better hand.
     /// </summary>
-    internal sealed class HandEvaluatorWrapper
+    public sealed class HandEvaluatorWrapper
     {
         /// <summary>
         /// Evaluates a player's best 5-card hand from hole cards + community cards.
@@ -29,13 +26,9 @@ namespace PokerEngine.Rules
             if (communityCards.Count < 3)
                 throw new ArgumentException("Need at least 3 community cards", nameof(communityCards));
 
-            // Combine all 7 cards and convert to package format
-            var allCards = holeCards.Concat(communityCards)
-                .Select(ConvertCard)
-                .ToArray();
-
-            // Evaluate - lower ranking = better hand
-            return HoldemHandEvaluator.GetHandRanking(allCards);
+            var allCards = holeCards.Concat(communityCards).ToList();
+            var bestHand = FindBestHand(allCards);
+            return bestHand.Rank;
         }
 
         /// <summary>
@@ -64,58 +57,148 @@ namespace PokerEngine.Rules
             if (holeCards.Count < 2 || communityCards.Count < 3)
                 return "Unknown";
 
-            var allCards = holeCards.Concat(communityCards)
-                .Select(ConvertCard)
-                .ToArray();
-
-            return HoldemHandEvaluator.GetHandDescription(allCards);
+            var allCards = holeCards.Concat(communityCards).ToList();
+            var bestHand = FindBestHand(allCards);
+            return bestHand.Category.ToString();
         }
 
         /// <summary>
-        /// Gets the hand category (e.g., Flush, FullHouse).
+        /// Gets the hand category.
         /// </summary>
-        public PokerHandCategory GetHandCategory(IReadOnlyList<Core.Card> holeCards, IReadOnlyList<Core.Card> communityCards)
+        public HandCategory GetHandCategory(IReadOnlyList<Core.Card> holeCards, IReadOnlyList<Core.Card> communityCards)
         {
             if (holeCards.Count < 2 || communityCards.Count < 3)
-                return PokerHandCategory.HighCard;
+                return HandCategory.HighCard;
 
-            var allCards = holeCards.Concat(communityCards)
-                .Select(ConvertCard)
-                .ToArray();
-
-            return HoldemHandEvaluator.GetHandCategory(allCards);
+            var allCards = holeCards.Concat(communityCards).ToList();
+            var bestHand = FindBestHand(allCards);
+            return bestHand.Category;
         }
 
-        private static Card ConvertCard(Core.Card card)
+        private HandResult FindBestHand(List<Core.Card> cards)
         {
-            var rankChar = card.Rank switch
-            {
-                Core.Rank.Two => '2',
-                Core.Rank.Three => '3',
-                Core.Rank.Four => '4',
-                Core.Rank.Five => '5',
-                Core.Rank.Six => '6',
-                Core.Rank.Seven => '7',
-                Core.Rank.Eight => '8',
-                Core.Rank.Nine => '9',
-                Core.Rank.Ten => 'T',
-                Core.Rank.Jack => 'J',
-                Core.Rank.Queen => 'Q',
-                Core.Rank.King => 'K',
-                Core.Rank.Ace => 'A',
-                _ => throw new ArgumentOutOfRangeException(nameof(card))
-            };
+            var bestHand = new HandResult { Rank = int.MaxValue, Category = HandCategory.HighCard };
 
-            var suitChar = card.Suit switch
+            // Generate all 5-card combinations from 7 cards
+            foreach (var combo in GetCombinations(cards, 5))
             {
-                Core.Suit.Clubs => 'c',
-                Core.Suit.Diamonds => 'd',
-                Core.Suit.Hearts => 'h',
-                Core.Suit.Spades => 's',
-                _ => throw new ArgumentOutOfRangeException(nameof(card))
-            };
+                var hand = EvaluateFiveCards(combo);
+                if (hand.Rank < bestHand.Rank)
+                {
+                    bestHand = hand;
+                }
+            }
 
-            return Card.Parse($"{rankChar}{suitChar}");
+            return bestHand;
         }
+
+        private HandResult EvaluateFiveCards(List<Core.Card> cards)
+        {
+            var sorted = cards.OrderByDescending(c => c.Rank).ToList();
+            var ranks = sorted.Select(c => (int)c.Rank).ToList();
+            var suits = sorted.Select(c => c.Suit).ToList();
+
+            var isFlush = suits.Distinct().Count() == 1;
+            var isStraight = IsStraight(ranks);
+
+            var rankGroups = ranks.GroupBy(r => r).OrderByDescending(g => g.Count()).ThenByDescending(g => g.Key).ToList();
+
+            // Straight Flush
+            if (isFlush && isStraight)
+            {
+                var highCard = ranks[0] == 14 && ranks[4] == 2 ? 5 : ranks[0]; // Ace-low straight
+                return new HandResult { Category = HandCategory.StraightFlush, Rank = 1000000 + highCard };
+            }
+
+            // Four of a Kind
+            if (rankGroups[0].Count() == 4)
+            {
+                return new HandResult { Category = HandCategory.FourOfAKind, Rank = 2000000 + rankGroups[0].Key * 100 + rankGroups[1].Key };
+            }
+
+            // Full House
+            if (rankGroups[0].Count() == 3 && rankGroups[1].Count() == 2)
+            {
+                return new HandResult { Category = HandCategory.FullHouse, Rank = 3000000 + rankGroups[0].Key * 100 + rankGroups[1].Key };
+            }
+
+            // Flush
+            if (isFlush)
+            {
+                return new HandResult { Category = HandCategory.Flush, Rank = 4000000 + ranks[0] * 10000 + ranks[1] * 100 + ranks[2] };
+            }
+
+            // Straight
+            if (isStraight)
+            {
+                var highCard = ranks[0] == 14 && ranks[4] == 2 ? 5 : ranks[0];
+                return new HandResult { Category = HandCategory.Straight, Rank = 5000000 + highCard };
+            }
+
+            // Three of a Kind
+            if (rankGroups[0].Count() == 3)
+            {
+                return new HandResult { Category = HandCategory.ThreeOfAKind, Rank = 6000000 + rankGroups[0].Key * 10000 + rankGroups[1].Key * 100 + rankGroups[2].Key };
+            }
+
+            // Two Pair
+            if (rankGroups[0].Count() == 2 && rankGroups[1].Count() == 2)
+            {
+                return new HandResult { Category = HandCategory.TwoPair, Rank = 7000000 + rankGroups[0].Key * 10000 + rankGroups[1].Key * 100 + rankGroups[2].Key };
+            }
+
+            // One Pair
+            if (rankGroups[0].Count() == 2)
+            {
+                return new HandResult { Category = HandCategory.OnePair, Rank = 8000000 + rankGroups[0].Key * 100000 + rankGroups[1].Key * 1000 + rankGroups[2].Key * 10 + rankGroups[3].Key };
+            }
+
+            // High Card
+            return new HandResult { Category = HandCategory.HighCard, Rank = 9000000 + ranks[0] * 100000 + ranks[1] * 1000 + ranks[2] * 10 + ranks[3] };
+        }
+
+        private bool IsStraight(List<int> ranks)
+        {
+            // Check normal straight
+            for (int i = 0; i < ranks.Count - 1; i++)
+            {
+                if (ranks[i] - ranks[i + 1] != 1)
+                {
+                    // Check for Ace-low straight (A-2-3-4-5)
+                    if (ranks[0] == 14 && ranks[1] == 5 && ranks[2] == 4 && ranks[3] == 3 && ranks[4] == 2)
+                        return true;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private IEnumerable<List<T>> GetCombinations<T>(List<T> list, int length)
+        {
+            if (length == 1) return list.Select(t => new List<T> { t });
+
+            return GetCombinations(list, length - 1)
+                .SelectMany(t => list.Where(e => list.IndexOf(e) > list.IndexOf(t.Last())),
+                    (t1, t2) => t1.Concat(new[] { t2 }).ToList());
+        }
+
+        private class HandResult
+        {
+            public HandCategory Category { get; set; }
+            public int Rank { get; set; }
+        }
+    }
+
+    public enum HandCategory
+    {
+        StraightFlush = 1,
+        FourOfAKind = 2,
+        FullHouse = 3,
+        Flush = 4,
+        Straight = 5,
+        ThreeOfAKind = 6,
+        TwoPair = 7,
+        OnePair = 8,
+        HighCard = 9
     }
 }

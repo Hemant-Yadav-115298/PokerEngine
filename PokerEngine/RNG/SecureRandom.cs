@@ -12,7 +12,7 @@ namespace PokerEngine.RNG
     /// <summary>
     /// Cryptographically secure RNG wrapper intended for deck seeding and any stochastic operations.
     /// </summary>
-    internal sealed class SecureRandom : IDisposable
+    public sealed class SecureRandom : IDisposable
     {
         private readonly RandomNumberGenerator _rng = RandomNumberGenerator.Create();
         private bool _disposed;

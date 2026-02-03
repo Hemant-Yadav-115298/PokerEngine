@@ -15,7 +15,7 @@ namespace PokerEngine.State
     /// <summary>
     /// Authoritative snapshot of session and hand data; only mutated through validated engine operations.
     /// </summary>
-    internal class GameState
+    public class GameState
     {
         private readonly List<Player> _players;
 

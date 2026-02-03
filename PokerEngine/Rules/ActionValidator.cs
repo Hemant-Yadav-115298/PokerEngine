@@ -137,7 +137,7 @@ namespace PokerEngine.Rules
         }
     }
 
-    internal sealed class ValidationResult
+    public sealed class ValidationResult
     {
         private ValidationResult(IEnumerable<string> errors)
         {

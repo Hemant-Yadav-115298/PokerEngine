@@ -13,7 +13,7 @@ namespace PokerEngine.Interfaces
     /// <summary>
     /// Observer hook for consuming state changes and events emitted by the engine.
     /// </summary>
-    internal interface IGameObserver
+    public interface IGameObserver
     {
     }
 }
