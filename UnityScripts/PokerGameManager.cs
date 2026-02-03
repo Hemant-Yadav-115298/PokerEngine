@@ -17,9 +17,9 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
 {
     [Header("Game Settings")]
     [SerializeField] private int numberOfPlayers = 6;
-    [SerializeField] private decimal startingStack = 1000m;
-    [SerializeField] private decimal smallBlind = 5m;
-    [SerializeField] private decimal bigBlind = 10m;
+    [SerializeField] private float startingStack = 1000f;
+    [SerializeField] private float smallBlind = 5f;
+    [SerializeField] private float bigBlind = 10f;
 
     [Header("References")]
     [SerializeField] private UIManager uiManager;
@@ -49,15 +49,15 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
                 Guid.NewGuid(),
                 $"Player {i + 1}",
                 seatIndex: i,
-                stack: startingStack
+                stack: (decimal)startingStack
             );
         }
 
         // Create game state
         gameState = gameEngine.CreateGameState(
             players,
-            smallBlind,
-            bigBlind,
+            (decimal)smallBlind,
+            (decimal)bigBlind,
             dealerSeat: 0,
             secureRandom,
             shuffleService
