@@ -12,9 +12,9 @@ public class PlayerUIPanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI stackText;
     [SerializeField] private TextMeshProUGUI statusText;
     [SerializeField] private Image highlightImage;
-    [SerializeField] private GameObject[] cardSlots;
+    [SerializeField] private CardVisual[] cardVisuals = new CardVisual[2];
 
-    public void UpdatePlayer(Player player, bool isActive)
+    public void UpdatePlayer(Player player, bool isActive, bool showCards = false)
     {
         if (player == null) return;
 
@@ -41,20 +41,37 @@ public class PlayerUIPanel : MonoBehaviour
         if (highlightImage != null)
             highlightImage.enabled = isActive;
 
-        // Update cards (show back of cards for now)
-        UpdateCardDisplay(player);
+        // Update cards
+        UpdateCardDisplay(player, showCards);
     }
 
-    private void UpdateCardDisplay(Player player)
+    private void UpdateCardDisplay(Player player, bool showCards)
     {
-        if (cardSlots == null) return;
+        if (cardVisuals == null || cardVisuals.Length < 2) return;
 
-        for (int i = 0; i < cardSlots.Length; i++)
+        for (int i = 0; i < cardVisuals.Length; i++)
         {
+            if (cardVisuals[i] == null) continue;
+
             if (i < player.HoleCards.Count)
-                cardSlots[i].SetActive(true);
+            {
+                cardVisuals[i].SetCard(player.HoleCards[i], showCards);
+            }
             else
-                cardSlots[i].SetActive(false);
+            {
+                cardVisuals[i].Clear();
+            }
+        }
+    }
+
+    public void ClearCards()
+    {
+        if (cardVisuals == null) return;
+        
+        foreach (var cardVisual in cardVisuals)
+        {
+            if (cardVisual != null)
+                cardVisual.Clear();
         }
     }
 }

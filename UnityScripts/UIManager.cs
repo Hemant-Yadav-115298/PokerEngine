@@ -20,6 +20,7 @@ public class UIManager : MonoBehaviour
 
     [Header("Player UI")]
     [SerializeField] private PlayerUIPanel[] playerPanels;
+    [SerializeField] private CommunityCardsDisplay communityCardsDisplay;
 
     private PokerGameManager gameManager;
 
@@ -65,6 +66,12 @@ public class UIManager : MonoBehaviour
             phaseText.text = $"Phase: {state.Phase}";
         }
 
+        // Update community cards
+        if (communityCardsDisplay != null)
+        {
+            communityCardsDisplay.UpdateCards(state.CommunityCards);
+        }
+
         // Update player panels
         UpdatePlayerPanels(state);
 
@@ -79,7 +86,10 @@ public class UIManager : MonoBehaviour
         for (int i = 0; i < playerPanels.Length && i < state.Players.Count; i++)
         {
             var player = state.Players[i];
-            playerPanels[i].UpdatePlayer(player, state.CurrentSeatToAct == i);
+            bool isActive = state.CurrentSeatToAct == i;
+            bool showCards = (i == 0); // Show cards only for human player (seat 0)
+            
+            playerPanels[i].UpdatePlayer(player, isActive, showCards);
         }
     }
 
