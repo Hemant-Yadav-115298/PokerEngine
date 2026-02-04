@@ -25,12 +25,15 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
 
     [Header("References")]
     [SerializeField] private UIManager uiManager;
+    [SerializeField] private GameOverUI gameOverUI;
+    [SerializeField] private WinnerCelebration winnerCelebration;
 
     private GameEngine gameEngine;
     private GameState gameState;
     private SecureRandom secureRandom;
     private ShuffleService shuffleService;
     private bool isProcessingTurn = false;
+    private int handsPlayed = 0;
 
     // Human player is always seat 0
     private const int HUMAN_PLAYER_SEAT = 0;
@@ -87,7 +90,8 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
         }
 
         gameEngine.StartHand(gameState);
-        Debug.Log("New hand started. Phase: " + gameState.Phase);
+        handsPlayed++;
+        Debug.Log($"Hand #{handsPlayed} started. Phase: {gameState.Phase}");
 
         // Update UI
         if (uiManager != null)
@@ -144,6 +148,12 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
             Debug.Log("Showdown!");
             yield return new WaitForSeconds(1f);
             PerformShowdown();
+            
+            // Show winner celebration
+            if (winnerCelebration != null)
+            {
+                yield return StartCoroutine(winnerCelebration.CelebrateWinner(null));
+            }
         }
         else if (gameState.HandComplete)
         {
@@ -155,6 +165,12 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
             if (winner != null)
             {
                 Debug.Log($"{winner.Name} wins by fold!");
+                
+                // Show winner celebration
+                if (winnerCelebration != null)
+                {
+                    yield return StartCoroutine(winnerCelebration.CelebrateWinner(null));
+                }
             }
         }
 
@@ -165,6 +181,24 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
         {
             uiManager.UpdateGameState(gameState);
         }
+
+        // Check for game over BEFORE auto-starting next hand
+        var playersWithChips = gameState.Players.Count(p => p.Stack > 0);
+        if (playersWithChips <= 1)
+        {
+            // Game Over!
+            yield return new WaitForSeconds(2f);
+            ShowGameOver();
+            yield break; // Stop here, don't auto-start
+        }
+
+        // Auto-start next hand after delay
+        yield return new WaitForSeconds(3f);
+        
+        // Rotate dealer
+        gameState.DealerSeat = (gameState.DealerSeat + 1) % gameState.Players.Count;
+        
+        StartNewHand();
     }
 
     private bool IsHumanPlayerTurn()
@@ -301,6 +335,16 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
         if (uiManager != null)
         {
             uiManager.UpdateGameState(gameState);
+        }
+    }
+
+    private void ShowGameOver()
+    {
+        var winner = gameState.Players.FirstOrDefault(p => p.Stack > 0);
+        if (winner != null && gameOverUI != null)
+        {
+            Debug.Log($"Game Over! {winner.Name} wins with ${winner.Stack}!");
+            gameOverUI.Show(winner.Name, winner.Stack);
         }
     }
 
