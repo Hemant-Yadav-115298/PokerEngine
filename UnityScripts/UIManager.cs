@@ -89,14 +89,51 @@ public class UIManager : MonoBehaviour
             }
         }
 
-        // Update player panels
-        UpdatePlayerPanels(state);
+        // Update player panels (normal mode - only show human cards)
+        UpdatePlayerPanels(state, false);
 
         // Update button states
         UpdateButtonStates(state);
     }
 
-    private void UpdatePlayerPanels(GameState state)
+    public void UpdateGameStateShowdown(GameState state)
+    {
+        if (state == null) return;
+
+        // Update central pot
+        if (centralPotDisplay != null)
+        {
+            var totalPot = state.TotalContributions.Values.Sum();
+            centralPotDisplay.UpdatePot(totalPot);
+        }
+
+        // Update top pot text (keep for backup/debug)
+        if (potText != null)
+        {
+            var totalPot = state.TotalContributions.Values.Sum();
+            potText.text = $"Pot: ${totalPot}";
+        }
+
+        // Update phase
+        if (phaseText != null)
+        {
+            phaseText.text = $"Phase: {state.Phase}";
+        }
+
+        // Update community cards with current phase
+        if (communityCardsDisplay != null)
+        {
+            communityCardsDisplay.UpdateCards(state.CommunityCards, state.Phase);
+        }
+
+        // Update player panels (showdown mode - show all active players' cards)
+        UpdatePlayerPanels(state, true);
+
+        // Update button states
+        UpdateButtonStates(state);
+    }
+
+    private void UpdatePlayerPanels(GameState state, bool isShowdown = false)
     {
         if (playerPanels == null) return;
 
@@ -104,8 +141,20 @@ public class UIManager : MonoBehaviour
         {
             var player = state.Players[i];
             bool isActive = state.CurrentSeatToAct == i;
-            bool showCards = (i == 0); // Show cards only for human player (seat 0)
             bool isDealer = (state.DealerSeat == i);
+            
+            // Determine if we should show this player's cards
+            bool showCards = false;
+            if (isShowdown)
+            {
+                // During showdown, show cards for all active (non-folded) players
+                showCards = !player.IsFolded;
+            }
+            else
+            {
+                // Normal play: only show human player's cards (seat 0)
+                showCards = (i == 0);
+            }
             
             // Get current ROUND bet for this player (not total contributions)
             decimal currentRoundBet = 0;

@@ -329,10 +329,10 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
             Debug.Log($"💰 {player.Name} wins ${payout.Value}! New stack: ${player.Stack}");
         }
 
-        // Update UI
+        // Update UI with showdown cards (show all active players' cards)
         if (uiManager != null)
         {
-            uiManager.UpdateGameState(gameState);
+            uiManager.UpdateGameStateShowdown(gameState);
         }
     }
 
