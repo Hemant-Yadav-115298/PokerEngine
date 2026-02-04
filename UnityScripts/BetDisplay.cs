@@ -30,4 +30,10 @@ public class BetDisplay : MonoBehaviour
         if (betContainer != null)
             betContainer.SetActive(false);
     }
+
+    // Clear bet when new round starts
+    public void ClearForNewRound()
+    {
+        Clear();
+    }
 }

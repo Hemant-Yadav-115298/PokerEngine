@@ -21,6 +21,7 @@ public class UIManager : MonoBehaviour
     [Header("Player UI")]
     [SerializeField] private PlayerUIPanel[] playerPanels;
     [SerializeField] private CommunityCardsDisplay communityCardsDisplay;
+    [SerializeField] private CentralPotDisplay centralPotDisplay;
 
     private PokerGameManager gameManager;
 
@@ -53,7 +54,14 @@ public class UIManager : MonoBehaviour
     {
         if (state == null) return;
 
-        // Update pot
+        // Update central pot
+        if (centralPotDisplay != null)
+        {
+            var totalPot = state.TotalContributions.Values.Sum();
+            centralPotDisplay.UpdatePot(totalPot);
+        }
+
+        // Update top pot text (keep for backup/debug)
         if (potText != null)
         {
             var totalPot = state.TotalContributions.Values.Sum();
@@ -66,10 +74,19 @@ public class UIManager : MonoBehaviour
             phaseText.text = $"Phase: {state.Phase}";
         }
 
-        // Update community cards
+        // Update community cards with current phase
         if (communityCardsDisplay != null)
         {
-            communityCardsDisplay.UpdateCards(state.CommunityCards);
+            if (state.Phase == GamePhase.NotStarted)
+            {
+                // Show all card backs at start
+                communityCardsDisplay.ShowAllCardBacks();
+            }
+            else
+            {
+                // Update cards based on phase
+                communityCardsDisplay.UpdateCards(state.CommunityCards, state.Phase);
+            }
         }
 
         // Update player panels
@@ -90,14 +107,14 @@ public class UIManager : MonoBehaviour
             bool showCards = (i == 0); // Show cards only for human player (seat 0)
             bool isDealer = (state.DealerSeat == i);
             
-            // Get current bet for this player
-            decimal currentBet = 0;
-            if (state.RoundState != null)
+            // Get current ROUND bet for this player (not total contributions)
+            decimal currentRoundBet = 0;
+            if (state.RoundState != null && !state.HandComplete)
             {
-                currentBet = state.RoundState.GetContribution(player.Id);
+                currentRoundBet = state.RoundState.GetContribution(player.Id);
             }
             
-            playerPanels[i].UpdatePlayer(player, isActive, showCards, currentBet, isDealer);
+            playerPanels[i].UpdatePlayer(player, isActive, showCards, currentRoundBet, isDealer);
         }
     }
 

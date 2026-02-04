@@ -84,5 +84,26 @@ namespace PokerEngine.Core
             }
             _position++;
         }
+
+        /// <summary>
+        /// Resets the deck position to start, effectively making all cards available again.
+        /// Used for starting a new hand with the same shuffled deck.
+        /// </summary>
+        public void Reset()
+        {
+            _position = 0;
+        }
+
+        /// <summary>
+        /// Resets and reshuffles the deck for a new hand.
+        /// </summary>
+        public void ResetAndShuffle(SecureRandom rng, ShuffleService shuffleService)
+        {
+            if (rng == null) throw new ArgumentNullException(nameof(rng));
+            if (shuffleService == null) throw new ArgumentNullException(nameof(shuffleService));
+            
+            _position = 0;
+            shuffleService.ShuffleInPlace(_cards, rng);
+        }
     }
 }

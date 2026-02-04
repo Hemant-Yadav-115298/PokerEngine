@@ -32,7 +32,6 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
     private GameState gameState;
     private SecureRandom secureRandom;
     private ShuffleService shuffleService;
-    private bool isProcessingTurn = false;
     private int handsPlayed = 0;
 
     // Human player is always seat 0
@@ -105,8 +104,6 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
 
     private IEnumerator ProcessTurns()
     {
-        isProcessingTurn = true;
-
         while (!gameState.HandComplete && gameState.Phase != GamePhase.NotStarted && gameState.Phase != GamePhase.Showdown)
         {
             var currentPlayer = gameState.GetPlayerBySeat(gameState.CurrentSeatToAct);
@@ -174,8 +171,6 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
             }
         }
 
-        isProcessingTurn = false;
-        
         // Update UI one final time
         if (uiManager != null)
         {
@@ -197,6 +192,9 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
         
         // Rotate dealer
         gameState.DealerSeat = (gameState.DealerSeat + 1) % gameState.Players.Count;
+        
+        // Reset and reshuffle deck for next hand
+        gameState.Deck.ResetAndShuffle(secureRandom, shuffleService);
         
         StartNewHand();
     }
