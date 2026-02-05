@@ -125,7 +125,7 @@ namespace PokerEngine.Rules
             // Flush
             if (isFlush)
             {
-                return new HandResult { Category = HandCategory.Flush, Rank = 4000000 + ranks[0] * 10000 + ranks[1] * 100 + ranks[2] };
+                return new HandResult { Category = HandCategory.Flush, Rank = 4000000 + ranks[0] * 100000 + ranks[1] * 10000 + ranks[2] * 1000 + ranks[3] * 100 + ranks[4] };
             }
 
             // Straight
@@ -154,7 +154,7 @@ namespace PokerEngine.Rules
             }
 
             // High Card
-            return new HandResult { Category = HandCategory.HighCard, Rank = 9000000 + ranks[0] * 100000 + ranks[1] * 1000 + ranks[2] * 10 + ranks[3] };
+            return new HandResult { Category = HandCategory.HighCard, Rank = 9000000 + ranks[0] * 100000 + ranks[1] * 10000 + ranks[2] * 1000 + ranks[3] * 100 + ranks[4] };
         }
 
         private bool IsStraight(List<int> ranks)

@@ -27,6 +27,8 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
     [SerializeField] private UIManager uiManager;
     [SerializeField] private GameOverUI gameOverUI;
     [SerializeField] private WinnerCelebration winnerCelebration;
+    [SerializeField] private ShowdownUI showdownUI;
+    [SerializeField] private PotAnimator potAnimator;
 
     private GameEngine gameEngine;
     private GameState gameState;
@@ -139,64 +141,8 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
             yield return new WaitForSeconds(0.2f);
         }
 
-        // Hand complete - check for showdown
-        if (gameState.Phase == GamePhase.Showdown)
-        {
-            Debug.Log("Showdown!");
-            yield return new WaitForSeconds(1f);
-            PerformShowdown();
-            
-            // Show winner celebration
-            if (winnerCelebration != null)
-            {
-                yield return StartCoroutine(winnerCelebration.CelebrateWinner(null));
-            }
-        }
-        else if (gameState.HandComplete)
-        {
-            Debug.Log("Hand complete - winner by fold");
-            yield return new WaitForSeconds(1f);
-            
-            // Find winner
-            var winner = gameState.Players.FirstOrDefault(p => !p.IsFolded);
-            if (winner != null)
-            {
-                Debug.Log($"{winner.Name} wins by fold!");
-                
-                // Show winner celebration
-                if (winnerCelebration != null)
-                {
-                    yield return StartCoroutine(winnerCelebration.CelebrateWinner(null));
-                }
-            }
-        }
-
-        // Update UI one final time
-        if (uiManager != null)
-        {
-            uiManager.UpdateGameState(gameState);
-        }
-
-        // Check for game over BEFORE auto-starting next hand
-        var playersWithChips = gameState.Players.Count(p => p.Stack > 0);
-        if (playersWithChips <= 1)
-        {
-            // Game Over!
-            yield return new WaitForSeconds(2f);
-            ShowGameOver();
-            yield break; // Stop here, don't auto-start
-        }
-
-        // Auto-start next hand after delay
-        yield return new WaitForSeconds(3f);
-        
-        // Rotate dealer
-        gameState.DealerSeat = (gameState.DealerSeat + 1) % gameState.Players.Count;
-        
-        // Reset and reshuffle deck for next hand
-        gameState.Deck.ResetAndShuffle(secureRandom, shuffleService);
-        
-        StartNewHand();
+        // Hand complete - start enhanced showdown sequence
+        yield return StartCoroutine(HandleHandComplete());
     }
 
     private bool IsHumanPlayerTurn()
@@ -283,6 +229,217 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
                 return PlayerAction.Fold(player.Id);
             }
         }
+    }
+
+    private IEnumerator HandleHandComplete()
+    {
+        // Disable player actions during showdown
+        uiManager?.EnablePlayerActions(false);
+
+        if (gameState.Phase == GamePhase.Showdown)
+        {
+            Debug.Log("=== SHOWDOWN PHASE ===");
+            
+            // 1. Reveal all active players' cards
+            yield return StartCoroutine(RevealShowdownCards());
+            
+            // 2. Evaluate hands and determine winners
+            var winners = PerformShowdownEvaluation();
+            
+            // 3. Display winner(s) and hand rankings
+            yield return StartCoroutine(DisplayWinners(winners));
+            
+            // 4. Animate pot transfer to winner(s)
+            yield return StartCoroutine(AnimatePotTransfer(winners));
+        }
+        else if (gameState.HandComplete)
+        {
+            Debug.Log("=== HAND WON BY FOLD ===");
+            
+            // Find winner by fold
+            var winner = gameState.Players.FirstOrDefault(p => !p.IsFolded);
+            if (winner != null)
+            {
+                var winAmount = gameState.TotalContributions.Values.Sum();
+                Debug.Log($"{winner.Name} wins ${winAmount} by fold!");
+                
+                // Show winner announcement
+                yield return StartCoroutine(DisplayFoldWinner(winner, winAmount));
+                
+                // Animate pot transfer
+                var winners = new List<(Player player, decimal amount, string handName)> 
+                { 
+                    (winner, winAmount, "Won by Fold") 
+                };
+                yield return StartCoroutine(AnimatePotTransfer(winners));
+            }
+        }
+
+        // 5. Check for game over
+        var playersWithChips = gameState.Players.Count(p => p.Stack > 0);
+        if (playersWithChips <= 1)
+        {
+            yield return new WaitForSeconds(2f);
+            ShowGameOver();
+            yield break;
+        }
+
+        // 6. Countdown to next hand
+        yield return StartCoroutine(CountdownToNextHand());
+        
+        // 7. Start next hand
+        PrepareNextHand();
+        StartNewHand();
+    }
+
+    private IEnumerator RevealShowdownCards()
+    {
+        Debug.Log("Revealing showdown cards...");
+        
+        // Update UI to show all active players' cards
+        if (uiManager != null)
+        {
+            uiManager.UpdateGameStateShowdown(gameState);
+        }
+        
+        // Wait for cards to be visible
+        yield return new WaitForSeconds(2f);
+    }
+
+    private List<(Player player, decimal amount, string handName)> PerformShowdownEvaluation()
+    {
+        var evaluator = new HandEvaluatorWrapper();
+        var activePlayers = gameState.Players.Where(p => !p.IsFolded).ToList();
+        var handRanks = new Dictionary<Guid, int>();
+        var handNames = new Dictionary<Guid, string>();
+        
+        Debug.Log($"Community Cards: {string.Join(", ", gameState.CommunityCards)}");
+        
+        // Evaluate all hands
+        foreach (var player in activePlayers)
+        {
+            var rank = evaluator.EvaluateHand(player.HoleCards, gameState.CommunityCards);
+            var handName = evaluator.GetHandName(player.HoleCards, gameState.CommunityCards);
+            
+            handRanks[player.Id] = rank;
+            handNames[player.Id] = handName;
+            
+            var cards = string.Join(", ", player.HoleCards);
+            Debug.Log($"{player.Name}: {cards} - {handName} (rank: {rank})");
+        }
+
+        // Distribute winnings
+        var payouts = gameEngine.Showdown(gameState, handRanks);
+        
+        // Create winners list
+        var winners = new List<(Player player, decimal amount, string handName)>();
+        foreach (var payout in payouts.Where(p => p.Value > 0))
+        {
+            var player = gameState.Players.First(p => p.Id == payout.Key);
+            var handName = handNames[player.Id];
+            winners.Add((player, payout.Value, handName));
+        }
+        
+        return winners;
+    }
+
+    private IEnumerator DisplayWinners(List<(Player player, decimal amount, string handName)> winners)
+    {
+        Debug.Log("=== WINNERS ===");
+        
+        foreach (var (player, amount, handName) in winners)
+        {
+            Debug.Log($"🏆 {player.Name} wins ${amount} with {handName}!");
+            
+            // Display winner UI
+            if (showdownUI != null)
+            {
+                yield return StartCoroutine(showdownUI.ShowWinner(player.Name, amount, handName));
+            }
+            else
+            {
+                yield return new WaitForSeconds(3f);
+            }
+        }
+    }
+
+    private IEnumerator DisplayFoldWinner(Player winner, decimal amount)
+    {
+        Debug.Log($"🏆 {winner.Name} wins ${amount} - All others folded!");
+        
+        // Display fold winner UI
+        if (showdownUI != null)
+        {
+            yield return StartCoroutine(showdownUI.ShowFoldWinner(winner.Name, amount));
+        }
+        else
+        {
+            yield return new WaitForSeconds(3f);
+        }
+    }
+
+    private IEnumerator AnimatePotTransfer(List<(Player player, decimal amount, string handName)> winners)
+    {
+        Debug.Log("Animating pot transfer...");
+        
+        foreach (var (player, amount, handName) in winners)
+        {
+            Debug.Log($"💰 Transferring ${amount} to {player.Name}");
+            
+            // Find player's UI panel for animation target
+            if (potAnimator != null)
+            {
+                // You'll need to get the player's UI panel transform
+                // For now, we'll use a simple delay
+                yield return new WaitForSeconds(0.5f);
+                
+                // TODO: Get actual player panel transform
+                // Transform playerTransform = GetPlayerPanelTransform(player.SeatIndex);
+                // yield return StartCoroutine(potAnimator.AnimatePotToWinner(playerTransform, amount));
+            }
+            else
+            {
+                yield return new WaitForSeconds(0.5f);
+            }
+        }
+        
+        // Update UI with final amounts
+        if (uiManager != null)
+        {
+            uiManager.UpdateGameState(gameState);
+        }
+        
+        yield return new WaitForSeconds(1f);
+    }
+
+    private IEnumerator CountdownToNextHand()
+    {
+        Debug.Log("Starting countdown to next hand...");
+        
+        // Display countdown UI
+        if (showdownUI != null)
+        {
+            yield return StartCoroutine(showdownUI.ShowCountdown());
+        }
+        else
+        {
+            // Fallback countdown
+            for (int i = 3; i >= 1; i--)
+            {
+                Debug.Log($"Next hand starts in: {i}");
+                yield return new WaitForSeconds(1f);
+            }
+            Debug.Log("Starting new hand!");
+        }
+    }
+
+    private void PrepareNextHand()
+    {
+        // Rotate dealer
+        gameState.DealerSeat = (gameState.DealerSeat + 1) % gameState.Players.Count;
+        
+        // Reset and reshuffle deck
+        gameState.Deck.ResetAndShuffle(secureRandom, shuffleService);
     }
 
     public void PerformShowdown()
@@ -384,6 +541,17 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
         // Simple raise: current bet + big blind
         var raiseAmount = round.CurrentBet + (decimal)bigBlind;
         var action = PlayerAction.Raise(player.Id, raiseAmount);
+        ProcessPlayerAction(action);
+    }
+
+    public void OnAllInClicked()
+    {
+        if (!IsHumanPlayerTurn()) return;
+        
+        var player = gameState.GetPlayerBySeat(HUMAN_PLAYER_SEAT);
+        
+        // All-in: bet entire stack
+        var action = PlayerAction.AllIn(player.Id, player.Stack);
         ProcessPlayerAction(action);
     }
 

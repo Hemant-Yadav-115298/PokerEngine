@@ -17,11 +17,11 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Button checkButton;
     [SerializeField] private Button callButton;
     [SerializeField] private Button raiseButton;
+    [SerializeField] private Button allInButton;
 
     [Header("Player UI")]
     [SerializeField] private PlayerUIPanel[] playerPanels;
     [SerializeField] private CommunityCardsDisplay communityCardsDisplay;
-    [SerializeField] private CentralPotDisplay centralPotDisplay;
 
     private PokerGameManager gameManager;
 
@@ -40,6 +40,8 @@ public class UIManager : MonoBehaviour
             callButton.onClick.AddListener(() => gameManager?.OnCallClicked());
         if (raiseButton != null)
             raiseButton.onClick.AddListener(() => gameManager?.OnRaiseClicked());
+        if (allInButton != null)
+            allInButton.onClick.AddListener(() => gameManager?.OnAllInClicked());
     }
 
     public void EnablePlayerActions(bool enable)
@@ -48,30 +50,24 @@ public class UIManager : MonoBehaviour
         if (checkButton != null) checkButton.interactable = enable;
         if (callButton != null) callButton.interactable = enable;
         if (raiseButton != null) raiseButton.interactable = enable;
+        if (allInButton != null) allInButton.interactable = enable;
     }
 
     public void UpdateGameState(GameState state)
     {
         if (state == null) return;
 
-        // Update central pot
-        if (centralPotDisplay != null)
-        {
-            var totalPot = state.TotalContributions.Values.Sum();
-            centralPotDisplay.UpdatePot(totalPot);
-        }
-
-        // Update top pot text (keep for backup/debug)
+        // Update pot and phase text (now in center)
         if (potText != null)
         {
             var totalPot = state.TotalContributions.Values.Sum();
-            potText.text = $"Pot: ${totalPot}";
+            potText.text = $"POT: ${totalPot}";
         }
 
         // Update phase
         if (phaseText != null)
         {
-            phaseText.text = $"Phase: {state.Phase}";
+            phaseText.text = $"{state.Phase}";
         }
 
         // Update community cards with current phase
@@ -100,24 +96,17 @@ public class UIManager : MonoBehaviour
     {
         if (state == null) return;
 
-        // Update central pot
-        if (centralPotDisplay != null)
-        {
-            var totalPot = state.TotalContributions.Values.Sum();
-            centralPotDisplay.UpdatePot(totalPot);
-        }
-
-        // Update top pot text (keep for backup/debug)
+        // Update pot and phase text (now in center)
         if (potText != null)
         {
             var totalPot = state.TotalContributions.Values.Sum();
-            potText.text = $"Pot: ${totalPot}";
+            potText.text = $"POT: ${totalPot}";
         }
 
         // Update phase
         if (phaseText != null)
         {
-            phaseText.text = $"Phase: {state.Phase}";
+            phaseText.text = $"{state.Phase}";
         }
 
         // Update community cards with current phase
@@ -167,7 +156,7 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    private void UpdateButtonStates(GameState state)
+    private void UpdateButtonStates(GameState state, bool isShowdown = false)
     {
         bool isActive = !state.HandComplete && state.Phase != GamePhase.NotStarted;
         bool isHumanTurn = gameManager != null && gameManager.IsHumanTurn();
@@ -176,6 +165,7 @@ public class UIManager : MonoBehaviour
         if (checkButton != null) checkButton.interactable = isActive && isHumanTurn;
         if (callButton != null) callButton.interactable = isActive && isHumanTurn;
         if (raiseButton != null) raiseButton.interactable = isActive && isHumanTurn;
+        if (allInButton != null) allInButton.interactable = isActive && isHumanTurn;
         if (startHandButton != null) startHandButton.interactable = !isActive;
     }
 }
