@@ -435,8 +435,24 @@ public class PokerGameManager : MonoBehaviour, IGameObserver
 
     private void PrepareNextHand()
     {
-        // Rotate dealer
-        gameState.DealerSeat = (gameState.DealerSeat + 1) % gameState.Players.Count;
+        // Rotate dealer to next active player (with chips)
+        int nextDealer = gameState.DealerSeat;
+        int attempts = 0;
+        int maxAttempts = gameState.Players.Count;
+        
+        do
+        {
+            nextDealer = (nextDealer + 1) % gameState.Players.Count;
+            attempts++;
+            
+            var player = gameState.GetPlayerBySeat(nextDealer);
+            if (player.Stack > 0)
+            {
+                gameState.DealerSeat = nextDealer;
+                Debug.Log($"Dealer button moved to seat {nextDealer} ({player.Name})");
+                break;
+            }
+        } while (attempts < maxAttempts);
         
         // Reset and reshuffle deck
         gameState.Deck.ResetAndShuffle(secureRandom, shuffleService);
