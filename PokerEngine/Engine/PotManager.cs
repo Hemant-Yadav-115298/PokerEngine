@@ -128,7 +128,7 @@ namespace PokerEngine.Engine
     /// <summary>
     /// Represents a discrete pot with a set of eligible players.
     /// </summary>
-    internal sealed class Pot
+    public sealed class Pot
     {
         public Pot(decimal amount, IEnumerable<Guid> eligiblePlayers)
         {

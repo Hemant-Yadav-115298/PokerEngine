@@ -15,7 +15,7 @@ namespace PokerEngine.Rules
     /// <summary>
     /// Validates player intents against GameState and RoundState to prevent illegal or contradictory actions.
     /// </summary>
-    internal sealed class ActionValidator
+    public sealed class ActionValidator
     {
         public ValidationResult Validate(GameState state, PlayerAction action)
         {
@@ -137,7 +137,7 @@ namespace PokerEngine.Rules
         }
     }
 
-    internal sealed class ValidationResult
+    public sealed class ValidationResult
     {
         private ValidationResult(IEnumerable<string> errors)
         {

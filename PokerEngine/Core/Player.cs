@@ -12,7 +12,7 @@ namespace PokerEngine.Core
     /// <summary>
     /// Domain entity describing a player; designed to integrate with GameState and action processing.
     /// </summary>
-    internal class Player
+    public class Player
     {
         private readonly List<Card> _holeCards = new(2);
 

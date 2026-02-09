@@ -11,7 +11,7 @@ namespace PokerEngine.Rules
     /// <summary>
     /// Intent model describing what a player wishes to do on their turn; consumed by validators and the engine.
     /// </summary>
-    internal sealed class PlayerAction
+    public sealed class PlayerAction
     {
         public PlayerAction(Guid playerId, ActionType type, decimal amount = 0)
         {

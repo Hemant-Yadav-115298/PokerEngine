@@ -11,7 +11,7 @@ namespace PokerEngine.Core
     /// <summary>
     /// Value object for a single playing card; intended to remain immutable once constructed.
     /// </summary>
-    internal readonly struct Card : IEquatable<Card>
+    public readonly struct Card : IEquatable<Card>
     {
         public Card(Rank rank, Suit suit)
         {
@@ -32,7 +32,7 @@ namespace PokerEngine.Core
         public override string ToString() => $"{Rank} of {Suit}";
     }
 
-    internal enum Suit
+    public enum Suit
     {
         Clubs = 0,
         Diamonds = 1,
@@ -40,7 +40,7 @@ namespace PokerEngine.Core
         Spades = 3
     }
 
-    internal enum Rank
+    public enum Rank
     {
         Two = 2,
         Three = 3,

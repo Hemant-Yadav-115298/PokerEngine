@@ -14,7 +14,7 @@ namespace PokerEngine.Core
     /// <summary>
     /// Represents a standard deck; intended to be constructed, shuffled externally, and consumed by the engine.
     /// </summary>
-    internal class Deck
+    public class Deck
     {
         private readonly List<Card> _cards;
         private int _position;

@@ -12,7 +12,7 @@ namespace PokerEngine.RNG
     /// <summary>
     /// Encapsulates deck shuffling logic to keep randomness centralized and auditable.
     /// </summary>
-    internal sealed class ShuffleService
+    public sealed class ShuffleService
     {
         public void ShuffleInPlace(IList<Core.Card> cards, SecureRandom rng)
         {

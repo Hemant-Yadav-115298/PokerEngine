@@ -11,7 +11,7 @@ namespace PokerEngine.Rules
     /// <summary>
     /// Canonical action type definitions (e.g., fold, check, call, bet, raise) for the rules layer.
     /// </summary>
-    internal enum ActionType
+    public enum ActionType
     {
         None = 0,
         Fold = 1,

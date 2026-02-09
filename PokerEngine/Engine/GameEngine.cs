@@ -17,7 +17,7 @@ namespace PokerEngine.Engine
     /// <summary>
     /// Drives the poker hand lifecycle by invoking TurnManager, RoundManager, and PotManager while mutating GameState safely.
     /// </summary>
-    internal sealed class GameEngine
+    public sealed class GameEngine
     {
         private readonly ActionValidator _validator = new();
         private readonly TurnManager _turnManager = new();

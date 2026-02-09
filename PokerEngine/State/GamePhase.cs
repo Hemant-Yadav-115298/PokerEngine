@@ -11,7 +11,7 @@ namespace PokerEngine.State
     /// <summary>
     /// Enumerated hand phases (e.g., pre-flop through showdown) used to gate logic across the engine.
     /// </summary>
-    internal enum GamePhase
+    public enum GamePhase
     {
         NotStarted = 0,
         PreFlop = 1,
