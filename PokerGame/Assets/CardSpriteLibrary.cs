@@ -84,11 +84,20 @@ public static class CardSpriteLibrary
         
         if (sprites == null || sprites.Length == 0) return;
 
+        Debug.Log($"[CardSpriteLibrary] Found {sprites.Length} sprites in {path}");
+
         foreach (var sprite in sprites)
         {
             if (sprite == null) continue;
             
-            var key = NormalizeName(sprite.name);
+            // Get the original sprite name
+            var originalName = sprite.name;
+            var key = NormalizeName(originalName);
+            
+            // Also try removing trailing _0, _1 etc. for multi-sprite sheets
+            var cleanKey = System.Text.RegularExpressions.Regex.Replace(key, @"_\d+$", "");
+            
+            Debug.Log($"[CardSpriteLibrary] Sprite: {originalName} -> key: {key}, cleanKey: {cleanKey}");
             
             // Check for card back
             if (key.Contains("back") || key.Contains("cardback"))
@@ -96,9 +105,16 @@ public static class CardSpriteLibrary
                 _cardBackSprite = sprite;
             }
             
+            // Store with original key
             if (!SpriteByName.ContainsKey(key))
             {
                 SpriteByName[key] = sprite;
+            }
+            
+            // Also store with cleaned key (without _0 suffix)
+            if (cleanKey != key && !SpriteByName.ContainsKey(cleanKey))
+            {
+                SpriteByName[cleanKey] = sprite;
             }
         }
     }
@@ -106,25 +122,37 @@ public static class CardSpriteLibrary
 #if UNITY_EDITOR
     private static void LoadFromAssetDatabase(string folderPath)
     {
-        var guids = UnityEditor.AssetDatabase.FindAssets("t:Sprite", new[] { folderPath });
+        var guids = UnityEditor.AssetDatabase.FindAssets("t:Texture2D", new[] { folderPath });
         
         foreach (var guid in guids)
         {
             var path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
-            var sprite = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(path);
             
-            if (sprite == null) continue;
-            
-            var key = NormalizeName(sprite.name);
-            
-            if (key.Contains("back") || key.Contains("cardback"))
+            // Load all sprites from this texture (handles multi-sprite textures)
+            var allAssets = UnityEditor.AssetDatabase.LoadAllAssetsAtPath(path);
+            foreach (var asset in allAssets)
             {
-                _cardBackSprite = sprite;
-            }
-            
-            if (!SpriteByName.ContainsKey(key))
-            {
-                SpriteByName[key] = sprite;
+                var sprite = asset as Sprite;
+                if (sprite == null) continue;
+                
+                var originalName = sprite.name;
+                var key = NormalizeName(originalName);
+                var cleanKey = System.Text.RegularExpressions.Regex.Replace(key, @"_\d+$", "");
+                
+                if (key.Contains("back") || key.Contains("cardback"))
+                {
+                    _cardBackSprite = sprite;
+                }
+                
+                if (!SpriteByName.ContainsKey(key))
+                {
+                    SpriteByName[key] = sprite;
+                }
+                
+                if (cleanKey != key && !SpriteByName.ContainsKey(cleanKey))
+                {
+                    SpriteByName[cleanKey] = sprite;
+                }
             }
         }
     }
