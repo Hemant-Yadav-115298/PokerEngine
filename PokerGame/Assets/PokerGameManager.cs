@@ -18,6 +18,22 @@ public class PokerGameManager : MonoBehaviour
     public TMP_Text phaseText;
     public TMP_Text winnerText;
 
+    [Header("UI Theme")]
+    public Color feltColor = new Color(0.06f, 0.28f, 0.19f, 1f);
+    public Color tableEdgeColor = new Color(0.03f, 0.12f, 0.08f, 0.95f);
+    public Color panelColor = new Color(0.12f, 0.12f, 0.12f, 0.82f);
+    public Color accentColor = new Color(0.94f, 0.78f, 0.25f, 1f);
+    public Color actionColor = new Color(0.12f, 0.45f, 0.28f, 1f);
+    public Color dangerColor = new Color(0.65f, 0.14f, 0.14f, 1f);
+    public Color neutralColor = new Color(0.2f, 0.2f, 0.2f, 1f);
+    public Color activePlayerColor = new Color(0.94f, 0.78f, 0.25f, 1f);
+    public Color inactivePlayerColor = new Color(0.12f, 0.12f, 0.12f, 0.82f);
+
+    [Header("Player Panels GameObjects")]
+    public GameObject player1Panel;
+    public GameObject player2Panel;
+    public GameObject player3Panel;
+
     [Header("Community Cards")]
     public CardDisplay[] communityCardSlots = new CardDisplay[5];
 
@@ -58,18 +74,53 @@ public class PokerGameManager : MonoBehaviour
     // Deadlock prevention flags
     private bool _isProcessingShowdown = false;
     private bool _isBotTurnRunning = false;
+    
+    // Panel outlines for active player highlight
+    private Outline _player1PanelOutline;
+    private Outline _player2PanelOutline;
+    private Outline _player3PanelOutline;
+    private Coroutine _activePlayerPulseCoroutine;
 
     void Start()
     {
         Debug.Log("Initializing Poker Game...");
+        CachePlayerPanels();
         InitializeEngine();
         SetupButtons();
+        ApplyTheme();
         StartNewGame();
     }
 
     void OnDestroy()
     {
         _rng?.Dispose();
+        if (_activePlayerPulseCoroutine != null) StopCoroutine(_activePlayerPulseCoroutine);
+    }
+
+    void CachePlayerPanels()
+    {
+        if (player1Panel == null) player1Panel = GameObject.Find("Player1Panel");
+        if (player2Panel == null) player2Panel = GameObject.Find("Player2Panel");
+        if (player3Panel == null) player3Panel = GameObject.Find("Player3Panel");
+
+        if (player1Panel != null)
+        {
+            _player1PanelOutline = player1Panel.GetComponent<Outline>();
+            if (_player1PanelOutline == null) _player1PanelOutline = player1Panel.AddComponent<Outline>();
+            _player1PanelOutline.effectDistance = new Vector2(4f, -4f);
+        }
+        if (player2Panel != null)
+        {
+            _player2PanelOutline = player2Panel.GetComponent<Outline>();
+            if (_player2PanelOutline == null) _player2PanelOutline = player2Panel.AddComponent<Outline>();
+            _player2PanelOutline.effectDistance = new Vector2(4f, -4f);
+        }
+        if (player3Panel != null)
+        {
+            _player3PanelOutline = player3Panel.GetComponent<Outline>();
+            if (_player3PanelOutline == null) _player3PanelOutline = player3Panel.AddComponent<Outline>();
+            _player3PanelOutline.effectDistance = new Vector2(4f, -4f);
+        }
     }
 
     void InitializeEngine()
@@ -332,23 +383,57 @@ public class PokerGameManager : MonoBehaviour
 
         var random = UnityEngine.Random.value;
 
+        // No bet to call - can check or bet
         if (toCall == 0)
         {
-            return random > 0.7f
-                ? PlayerAction.Bet(bot.Id, _gameState.BigBlind)
-                : PlayerAction.Check(bot.Id);
+            // Check if there's already a bet in this round (need to use raise, not bet)
+            if (round.CurrentBet > 0)
+            {
+                // Someone already bet, we need to raise
+                var raiseAmount = _gameState.BigBlind * 2;
+                if (bot.Stack >= toCall + raiseAmount)
+                {
+                    return random > 0.7f
+                        ? PlayerAction.Raise(bot.Id, raiseAmount)
+                        : PlayerAction.Check(bot.Id);
+                }
+                else
+                {
+                    return PlayerAction.Check(bot.Id);
+                }
+            }
+            else
+            {
+                // First to act, can bet
+                return random > 0.7f
+                    ? PlayerAction.Bet(bot.Id, _gameState.BigBlind)
+                    : PlayerAction.Check(bot.Id);
+            }
         }
+        // There's a bet to call
         else if (toCall > bot.Stack * 0.5m)
         {
+            // Too expensive, mostly fold
             return random > 0.3f
                 ? PlayerAction.Fold(bot.Id)
                 : PlayerAction.Call(bot.Id);
         }
         else
         {
-            return random > 0.2f
-                ? PlayerAction.Call(bot.Id)
-                : PlayerAction.Fold(bot.Id);
+            // Affordable, mostly call
+            if (random > 0.8f && bot.Stack > toCall + _gameState.BigBlind)
+            {
+                // Occasionally raise
+                return PlayerAction.Raise(bot.Id, _gameState.BigBlind * 2);
+            }
+            else if (random > 0.2f)
+            {
+                return PlayerAction.Call(bot.Id);
+            }
+            else
+            {
+                return PlayerAction.Fold(bot.Id);
+            }
         }
     }
 
@@ -361,17 +446,24 @@ public class PokerGameManager : MonoBehaviour
         }
 
         _isProcessingShowdown = true;
+        ClearActivePlayerHighlight();
         Debug.Log("=== SHOWDOWN START ===");
         yield return new WaitForSeconds(1.5f);
 
         var remaining = _gameState.Players.Where(p => !p.IsFolded).ToList();
+        var players = _gameState.Players.ToList();
+        Guid winnerId = Guid.Empty;
 
         if (remaining.Count == 1)
         {
             var winner = remaining[0];
+            winnerId = winner.Id;
             var amount = _gameState.TotalContributions.Values.Sum();
             if (winnerText != null)
+            {
                 winnerText.text = $"{winner.Name} wins ${amount}!";
+                StartCoroutine(WinnerTextAnimation());
+            }
             Debug.Log($"{winner.Name} wins ${amount} (others folded)");
         }
         else if (_gameState.CommunityCards.Count >= 5)
@@ -387,12 +479,19 @@ public class PokerGameManager : MonoBehaviour
             foreach (var (playerId, amount) in payouts.Where(p => p.Value > 0))
             {
                 var player = _gameState.GetPlayerById(playerId);
+                winnerId = playerId;
                 var handName = _evaluator.GetHandName(player.HoleCards, _gameState.CommunityCards);
                 if (winnerText != null)
+                {
                     winnerText.text = $"{player.Name} wins ${amount} with {handName}!";
+                    StartCoroutine(WinnerTextAnimation());
+                }
                 Debug.Log($"{player.Name} wins ${amount} with {handName}");
             }
         }
+
+        // Trigger win/lose card animations
+        PlayWinLoseAnimations(winnerId, players);
 
         UpdateAllUI();
         yield return new WaitForSeconds(3f);
@@ -420,6 +519,7 @@ public class PokerGameManager : MonoBehaviour
         {
             p.ResetForNewHand();
         }
+        ResetAllCardEffects();
     }
 
     void UpdateAllUI()
@@ -428,6 +528,370 @@ public class PokerGameManager : MonoBehaviour
         UpdatePlayerPanels();
         UpdateCommunityCards();
         UpdateButtons();
+        UpdateActivePlayerHighlight();
+    }
+
+    void PlayWinLoseAnimations(Guid winnerId, List<Player> players)
+    {
+        // Winner cards glow
+        if (winnerId != Guid.Empty)
+        {
+            if (players[0].Id == winnerId)
+            {
+                foreach (var card in playerCardSlots) card?.ShowWinEffect();
+            }
+            else
+            {
+                foreach (var card in playerCardSlots) card?.ShowLoseEffect();
+            }
+
+            if (players[1].Id == winnerId)
+            {
+                foreach (var card in player2CardSlots) card?.ShowWinEffect();
+            }
+            else
+            {
+                foreach (var card in player2CardSlots) card?.ShowLoseEffect();
+            }
+
+            if (players[2].Id == winnerId)
+            {
+                foreach (var card in player3CardSlots) card?.ShowWinEffect();
+            }
+            else
+            {
+                foreach (var card in player3CardSlots) card?.ShowLoseEffect();
+            }
+        }
+    }
+
+    void ResetAllCardEffects()
+    {
+        foreach (var card in communityCardSlots) card?.ResetEffects();
+        foreach (var card in playerCardSlots) card?.ResetEffects();
+        foreach (var card in player2CardSlots) card?.ResetEffects();
+        foreach (var card in player3CardSlots) card?.ResetEffects();
+    }
+
+    IEnumerator WinnerTextAnimation()
+    {
+        if (winnerText == null) yield break;
+
+        var originalScale = winnerText.transform.localScale;
+        float elapsed = 0f;
+        float duration = 0.3f;
+
+        // Scale up
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+            float scale = Mathf.Lerp(0.5f, 1.1f, t);
+            winnerText.transform.localScale = originalScale * scale;
+            yield return null;
+        }
+
+        // Scale back
+        elapsed = 0f;
+        while (elapsed < 0.15f)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / 0.15f;
+            float scale = Mathf.Lerp(1.1f, 1f, t);
+            winnerText.transform.localScale = originalScale * scale;
+            yield return null;
+        }
+
+        winnerText.transform.localScale = originalScale;
+    }
+
+    void UpdateActivePlayerHighlight()
+    {
+        var currentSeat = _gameState.CurrentSeatToAct;
+        var players = _gameState.Players.ToList();
+
+        // Clear all highlights
+        SetPanelHighlight(_player1PanelOutline, false);
+        SetPanelHighlight(_player2PanelOutline, false);
+        SetPanelHighlight(_player3PanelOutline, false);
+
+        // Highlight active player
+        if (players.Count > 0 && players[0].SeatIndex == currentSeat)
+        {
+            SetPanelHighlight(_player1PanelOutline, true);
+        }
+        else if (players.Count > 1 && players[1].SeatIndex == currentSeat)
+        {
+            SetPanelHighlight(_player2PanelOutline, true);
+        }
+        else if (players.Count > 2 && players[2].SeatIndex == currentSeat)
+        {
+            SetPanelHighlight(_player3PanelOutline, true);
+        }
+
+        // Start pulse animation for active player
+        if (_activePlayerPulseCoroutine != null) StopCoroutine(_activePlayerPulseCoroutine);
+        _activePlayerPulseCoroutine = StartCoroutine(ActivePlayerPulseAnimation(currentSeat, players));
+    }
+
+    void SetPanelHighlight(Outline outline, bool active)
+    {
+        if (outline == null) return;
+        outline.effectColor = active ? activePlayerColor : Color.clear;
+    }
+
+    void ClearActivePlayerHighlight()
+    {
+        if (_activePlayerPulseCoroutine != null)
+        {
+            StopCoroutine(_activePlayerPulseCoroutine);
+            _activePlayerPulseCoroutine = null;
+        }
+        SetPanelHighlight(_player1PanelOutline, false);
+        SetPanelHighlight(_player2PanelOutline, false);
+        SetPanelHighlight(_player3PanelOutline, false);
+    }
+
+    IEnumerator ActivePlayerPulseAnimation(int currentSeat, List<Player> players)
+    {
+        Outline activeOutline = null;
+        
+        if (players.Count > 0 && players[0].SeatIndex == currentSeat) activeOutline = _player1PanelOutline;
+        else if (players.Count > 1 && players[1].SeatIndex == currentSeat) activeOutline = _player2PanelOutline;
+        else if (players.Count > 2 && players[2].SeatIndex == currentSeat) activeOutline = _player3PanelOutline;
+
+        if (activeOutline == null) yield break;
+
+        float elapsed = 0f;
+        float pulseDuration = 0.8f;
+        bool pulsingIn = true;
+
+        while (true)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / pulseDuration;
+
+            if (pulsingIn)
+            {
+                activeOutline.effectColor = Color.Lerp(activePlayerColor * 0.6f, activePlayerColor, t);
+                activeOutline.effectDistance = Vector2.Lerp(new Vector2(3f, -3f), new Vector2(5f, -5f), t);
+            }
+            else
+            {
+                activeOutline.effectColor = Color.Lerp(activePlayerColor, activePlayerColor * 0.6f, t);
+                activeOutline.effectDistance = Vector2.Lerp(new Vector2(5f, -5f), new Vector2(3f, -3f), t);
+            }
+
+            if (t >= 1f)
+            {
+                elapsed = 0f;
+                pulsingIn = !pulsingIn;
+            }
+
+            yield return null;
+        }
+    }
+
+    void ApplyTheme()
+    {
+        var canvas = FindObjectOfType<Canvas>();
+        if (canvas != null)
+        {
+            EnsureBackground(canvas.transform);
+            EnsureTableSurface(canvas.transform);
+        }
+
+        StyleText(potText, accentColor, 34, FontStyles.Bold);
+        StyleText(phaseText, Color.white, 26, FontStyles.Italic);
+        if (winnerText != null)
+        {
+            StyleText(winnerText, accentColor, 64, FontStyles.Bold);
+        }
+
+        StyleText(player1NameText, Color.white, 26, FontStyles.Bold);
+        StyleText(player1StackText, accentColor, 24, FontStyles.Normal);
+        StyleText(player1BetText, Color.white, 22, FontStyles.Normal);
+
+        StyleText(player2NameText, Color.white, 26, FontStyles.Bold);
+        StyleText(player2StackText, accentColor, 24, FontStyles.Normal);
+        StyleText(player2BetText, Color.white, 22, FontStyles.Normal);
+
+        StyleText(player3NameText, Color.white, 26, FontStyles.Bold);
+        StyleText(player3StackText, accentColor, 24, FontStyles.Normal);
+        StyleText(player3BetText, Color.white, 22, FontStyles.Normal);
+
+        StylePanel("Player1Panel");
+        StylePanel("Player2Panel");
+        StylePanel("Player3Panel");
+
+        StyleCardSlots(communityCardSlots, 140, 200);
+        StyleCardSlots(playerCardSlots, 120, 170);
+        StyleCardSlots(player2CardSlots, 120, 170);
+        StyleCardSlots(player3CardSlots, 120, 170);
+
+        StyleButton(foldButton, dangerColor);
+        StyleButton(checkButton, neutralColor);
+        StyleButton(callButton, actionColor);
+        StyleButton(betButton, actionColor);
+        StyleButton(raiseButton, actionColor);
+        StyleButton(allInButton, dangerColor);
+
+        StyleInputField(betAmountInput);
+    }
+
+    void EnsureBackground(Transform canvas)
+    {
+        var existing = canvas.Find("Background");
+        if (existing == null)
+        {
+            var bg = new GameObject("Background", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            bg.transform.SetParent(canvas, false);
+            bg.transform.SetAsFirstSibling();
+            var rt = bg.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+            var image = bg.GetComponent<Image>();
+            image.color = tableEdgeColor;
+        }
+        else
+        {
+            var image = existing.GetComponent<Image>();
+            if (image != null) image.color = tableEdgeColor;
+            existing.SetAsFirstSibling();
+        }
+    }
+
+    void EnsureTableSurface(Transform canvas)
+    {
+        var existing = canvas.Find("TableSurface");
+        if (existing == null)
+        {
+            var table = new GameObject("TableSurface", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            table.transform.SetParent(canvas, false);
+            table.transform.SetSiblingIndex(1);
+            var rt = table.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.1f, 0.12f);
+            rt.anchorMax = new Vector2(0.9f, 0.78f);
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+            var image = table.GetComponent<Image>();
+            image.color = feltColor;
+            image.type = Image.Type.Sliced;
+        }
+        else
+        {
+            var image = existing.GetComponent<Image>();
+            if (image != null)
+            {
+                image.color = feltColor;
+                image.type = Image.Type.Sliced;
+            }
+            existing.SetSiblingIndex(1);
+        }
+    }
+
+    void StylePanel(string panelName)
+    {
+        var panel = GameObject.Find(panelName);
+        if (panel == null) return;
+
+        var image = panel.GetComponent<Image>();
+        if (image != null)
+        {
+            image.color = panelColor;
+            image.type = Image.Type.Sliced;
+        }
+
+        var outline = panel.GetComponent<Outline>();
+        if (outline == null) outline = panel.AddComponent<Outline>();
+        outline.effectColor = new Color(0f, 0f, 0f, 0.5f);
+        outline.effectDistance = new Vector2(2f, -2f);
+    }
+
+    void StyleText(TMP_Text text, Color color, float size, FontStyles style)
+    {
+        if (text == null) return;
+        text.color = color;
+        text.fontSize = size;
+        text.fontStyle = style;
+        text.enableAutoSizing = false;
+    }
+
+    void StyleCardSlots(CardDisplay[] slots, float width, float height)
+    {
+        if (slots == null) return;
+        foreach (var slot in slots)
+        {
+            if (slot == null) continue;
+            var image = slot.GetComponent<Image>();
+            if (image != null)
+            {
+                image.preserveAspect = true;
+            }
+
+            var rt = slot.GetComponent<RectTransform>();
+            if (rt != null)
+            {
+                rt.sizeDelta = new Vector2(width, height);
+            }
+        }
+    }
+
+    void StyleButton(Button button, Color baseColor)
+    {
+        if (button == null) return;
+
+        var colors = button.colors;
+        colors.normalColor = baseColor;
+        colors.highlightedColor = baseColor * 1.15f;
+        colors.pressedColor = baseColor * 0.9f;
+        colors.disabledColor = new Color(0.25f, 0.25f, 0.25f, 0.8f);
+        colors.colorMultiplier = 1f;
+        button.colors = colors;
+
+        var image = button.GetComponent<Image>();
+        if (image != null)
+        {
+            image.type = Image.Type.Sliced;
+            image.color = Color.white;
+        }
+
+        var text = button.GetComponentInChildren<TMP_Text>();
+        if (text != null)
+        {
+            text.color = Color.white;
+            text.fontSize = 26;
+            text.fontStyle = FontStyles.Bold;
+        }
+    }
+
+    void StyleInputField(TMP_InputField input)
+    {
+        if (input == null) return;
+
+        var image = input.GetComponent<Image>();
+        if (image != null)
+        {
+            image.color = panelColor;
+            image.type = Image.Type.Sliced;
+        }
+
+        if (input.textComponent != null)
+        {
+            input.textComponent.color = Color.white;
+            input.textComponent.fontSize = 24;
+        }
+
+        if (input.placeholder is TMP_Text placeholder)
+        {
+            placeholder.color = new Color(1f, 1f, 1f, 0.5f);
+            if (string.IsNullOrWhiteSpace(placeholder.text))
+            {
+                placeholder.text = "Bet Amount";
+            }
+        }
     }
 
     void UpdatePotAndPhase()
@@ -457,36 +921,44 @@ public class PokerGameManager : MonoBehaviour
     {
         for (int i = 0; i < communityCardSlots.Length; i++)
         {
+            if (communityCardSlots[i] == null) continue;
+            
             if (i < _gameState.CommunityCards.Count)
-                communityCardSlots[i].SetCard(_gameState.CommunityCards[i]);
+                communityCardSlots[i].SetCard(_gameState.CommunityCards[i], true);
             else
-                communityCardSlots[i].ShowCardBack();
+                communityCardSlots[i].ShowCardBack(false);
         }
 
         var players = _gameState.Players.ToList();
 
         for (int i = 0; i < playerCardSlots.Length; i++)
         {
+            if (playerCardSlots[i] == null) continue;
+            
             if (i < players[0].HoleCards.Count)
-                playerCardSlots[i].SetCard(players[0].HoleCards[i]);
+                playerCardSlots[i].SetCard(players[0].HoleCards[i], true);
             else
-                playerCardSlots[i].ShowCardBack();
+                playerCardSlots[i].ShowCardBack(false);
         }
 
         for (int i = 0; i < player2CardSlots.Length; i++)
         {
+            if (player2CardSlots[i] == null) continue;
+            
             if (i < players[1].HoleCards.Count)
-                player2CardSlots[i].SetCard(players[1].HoleCards[i]);
+                player2CardSlots[i].SetCard(players[1].HoleCards[i], true);
             else
-                player2CardSlots[i].ShowCardBack();
+                player2CardSlots[i].ShowCardBack(false);
         }
 
         for (int i = 0; i < player3CardSlots.Length; i++)
         {
+            if (player3CardSlots[i] == null) continue;
+            
             if (i < players[2].HoleCards.Count)
-                player3CardSlots[i].SetCard(players[2].HoleCards[i]);
+                player3CardSlots[i].SetCard(players[2].HoleCards[i], true);
             else
-                player3CardSlots[i].ShowCardBack();
+                player3CardSlots[i].ShowCardBack(false);
         }
     }
 
